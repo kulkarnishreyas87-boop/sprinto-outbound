@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}New run · Sprinto Outbound{% endblock %}
+{% block body %}
+<h1>New run</h1>
+{% if active %}<div class="msg">A run is already in progress: <a href="/runs/{{ active }}/live">finish it first</a>.</div>{% endif %}
+{% if error %}<div class="err">{{ error }}</div>{% endif %}
+<div class="card">
+  <span class="badge">Hunter: {{ hunter_used }} of {{ hunter_cap }} searches used (30 days)</span>
+  <span class="badge">Approved claims: {{ approved_claims }}</span>
+  {% if approved_claims == 0 %}<p class="err">No approved claims: companies will be qualified, but nothing will be drafted and Hunter won't be called.</p>{% endif %}
+</div>
+<form method="post" action="/runs" class="card">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="domains">Company domains (one per line, up to {{ max_domains }})</label>
+  <textarea id="domains" name="domains" rows="8" placeholder="acme.io&#10;https://www.example.com/pricing" required></textarea>
+  <label><input type="checkbox" name="force" value="1"> Re-research domains done in the last 30 days</label>
+  <p class="muted">Each company takes about 15–70 seconds. Nothing is ever sent from a run: drafts wait in Review.</p>
+  <button type="submit" {% if active %}disabled{% endif %}>Start run</button>
+</form>
+{% endblock %}

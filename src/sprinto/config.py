@@ -12,7 +12,18 @@ import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-ROOT = Path(__file__).resolve().parents[2]
+def _find_root() -> Path:
+    """Project root holding config/ and prompts/: SPRINTO_ROOT, else the source checkout, else the cwd
+    (on Vercel the package may be installed into site-packages while the files sit in the project root)."""
+    if os.environ.get("SPRINTO_ROOT"):
+        return Path(os.environ["SPRINTO_ROOT"])
+    src_root = Path(__file__).resolve().parents[2]
+    if (src_root / "config").is_dir():
+        return src_root
+    return Path.cwd()
+
+
+ROOT = _find_root()
 CONFIG_DIR = ROOT / "config"
 ACTIVE_FILE = CONFIG_DIR / "ACTIVE"
 
@@ -125,6 +136,7 @@ class HunterCfg(_Strict):
 
 class ContactsCfg(_Strict):
     hunter: HunterCfg = Field(default_factory=HunterCfg)
+    hunter_monthly_cap: int = 0     # 0 = no cap; counts real API calls in a rolling 30 days
     min_confidence: int
     exclude_title_keywords: list[str]
     ranking: dict[str, list[str]]

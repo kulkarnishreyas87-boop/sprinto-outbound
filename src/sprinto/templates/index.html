@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Outbound research runs</h1>
+<p class="muted">Each run takes a list of company domains and decides, for each one, whether to drop it, flag it for
+  review or draft an email, with every decision explained from verified evidence.
+  {% if not operator %}This public view hides people's names, pain hypotheses and email bodies.{% endif %}</p>
+{% if active and operator %}<div class="msg">A run is in progress: <a href="/runs/{{ active }}/live">open it</a> to keep it going.</div>{% endif %}
+{% if runs %}
+<div class="wrap"><table>
+  <thead><tr><th>Run</th><th>Started (UTC)</th><th>Companies</th><th>Outcomes</th><th>Cost</th></tr></thead>
+  <tbody>
+  {% for r in runs %}
+  <tr>
+    <td><a href="/runs/{{ r.run_id }}">{{ r.run_id }}</a><br><span class="muted">config v{{ r.version }}</span></td>
+    <td>{{ r.started }}</td>
+    <td>{{ r.n }}</td>
+    <td>{% for k, v in r.counts.items() %}<span class="badge s-{{ k }}">{{ k }} {{ v }}</span> {% endfor %}</td>
+    <td>${{ "%.3f"|format(r.usd) }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<div class="card">No runs yet.</div>
+{% endif %}
+{% endblock %}

@@ -46,6 +46,37 @@ Sprinto proof points live in `config/claims.yaml`. Only claims marked `approved:
 | `test-gold [--config N] [--freeze domains]` | Runs the gold-set regression test on frozen fixtures, with no network and no Hunter calls. |
 | `promote vN` | Makes config version N active. Only a human runs this. Moving forward needs a passing gold result; rolling back is always allowed. |
 
+## Live web app (Vercel)
+
+The same pipeline runs as a FastAPI app (`src/sprinto/web.py`), deployed on Vercel with Neon Postgres.
+
+- **Public, no login:** the list of runs, plus every company's decision, evidence, tier, hook, claim and cost. People's names, pain hypotheses, email bodies and review notes are hidden.
+- **Operator, password needed:**
+  - **New run:** up to 15 domains, one batch at a time. Each company runs in its own request, and the page updates as each one finishes.
+  - **Review:** approve and send, edit and send, or reject, using the reason codes; give verdicts on review-queue items; record outcomes.
+- **Guards:**
+  - every operator action needs a signed session plus a CSRF token;
+  - operator routes switch off unless both secrets are set;
+  - Hunter stops at `contacts.hunter_monthly_cap` searches in a rolling 30 days;
+  - email still goes only to `MY_EMAIL`.
+
+Vercel environment variables:
+
+| Variable | Notes |
+|---|---|
+| `DATABASE_URL` | Neon. Set automatically when Neon is added from Vercel → Storage. |
+| `GEMINI_API_KEY`, `HUNTER_API_KEY`, `RESEND_API_KEY`, `MY_EMAIL` | Same as `.env`. |
+| `OPERATOR_PASSWORD` | Password for the operator pages. |
+| `SESSION_SECRET` | Random string of 32 or more characters, used to sign sessions. |
+| `RUNS_DIR=/tmp/runs` | Optional. Where JSON copies of decision records are written. |
+
+To run the app locally: `uv run uvicorn sprinto.web:app --port 8765`. It uses SQLite unless `DATABASE_URL` is set.
+
+**Limits on Vercel:**
+- No headless-browser fallback for thin pages; the CLI still has it.
+- A batch advances only while its run page is open.
+- `test-gold`, `propose` and `promote` stay in the CLI. A promoted config goes live by committing `config/ACTIVE` and redeploying.
+
 ## Pipeline
 
 S0 input → S1 scrape → S2 extract, then the S2b support check → S3 hard gates → S4 evidence loop (at most 4 extra fetches) → S5 qualify → S6 contact → S7 pains → S8 variants → S9 QA and judge → S10 review → S11 send → S12 outcomes.

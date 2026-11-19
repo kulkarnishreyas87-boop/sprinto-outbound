@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Running {{ run_id }} · Sprinto Outbound{% endblock %}
+{% block body %}
+<h1>Run {{ run_id }}</h1>
+<p class="muted">Companies are processed one at a time while this page is open. If you close it, come back and it continues where it stopped.</p>
+<div id="status" class="msg">Starting…</div>
+<div class="wrap"><table>
+  <thead><tr><th>Company</th><th>State</th><th>Result</th></tr></thead>
+  <tbody>
+  {% for i in items %}
+  <tr id="row-{{ i.domain }}"><td>{{ i.domain }}</td>
+    <td><span class="badge s-{{ i.state }}" data-state>{{ i.state }}</span></td>
+    <td data-result class="muted">{{ i.note or "" }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+<p><a class="btn" href="/runs/{{ run_id }}">Open the full report</a></p>
+<script>
+(function () {
+  const runId = {{ run_id|tojson }}, csrf = {{ csrf|tojson }};
+  const status = document.getElementById("status");
+  function row(domain) { return document.getElementById("row-" + domain); }
+  function setRow(domain, state, text) {
+    const r = row(domain); if (!r) return;
+    const b = r.querySelector("[data-state]"); b.textContent = state; b.className = "badge s-" + state;
+    r.querySelector("[data-result]").textContent = text || "";
+  }
+  async function step() {
+    const pending = [...document.querySelectorAll("[data-state]")].find(b => b.textContent === "pending");
+    if (pending) setRow(pending.closest("tr").id.slice(4), "running", "working…");
+    status.textContent = "Processing…";
+    let res;
+    try {
+      res = await fetch("/api/runs/" + encodeURIComponent(runId) + "/next",
+                        {method: "POST", headers: {"X-CSRF-Token": csrf}});
+    } catch (e) { status.textContent = "Network error. Reload the page to continue."; return; }
+    if (!res.ok) { status.textContent = "Stopped: HTTP " + res.status + ". Reload the page to continue."; return; }
+    const data = await res.json();
+    if (data.done) { status.textContent = "Run finished."; return; }
+    if (data.busy) { status.textContent = "Another request is still working on a company. Retrying shortly…";
+                     return setTimeout(step, 8000); }
+    const text = data.status + (data.tier ? " · tier " + data.tier : "") + (data.reason ? " · " + data.reason : "");
+    setRow(data.domain, "done", text);
+    step();
+  }
+  step();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Operator login · Sprinto Outbound{% endblock %}
+{% block body %}
+<h1>Operator login</h1>
+<p class="muted">Running the pipeline and reviewing drafts spend API credits and send email, so they need the operator password.</p>
+{% if error %}<div class="err">{{ error }}</div>{% endif %}
+<form method="post" action="/login" class="card" style="max-width:360px">
+  <label for="password">Password</label>
+  <input id="password" name="password" type="password" autocomplete="current-password" required style="width:100%">
+  <p><button type="submit">Log in</button></p>
+</form>
+{% endblock %}

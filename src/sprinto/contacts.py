@@ -40,6 +40,9 @@ class HunterClient:
             return cached, False
         if self.cache_only:
             raise HunterError("hunter_skipped_dry_run", "not in cache; dry runs make no Hunter calls")
+        cap = self.cfg.hunter_monthly_cap
+        if cap and self.store.hunter_calls_since(30) >= cap:
+            raise HunterError("hunter_monthly_cap", f"{cap} searches already used in the last 30 days")
         if not self.api_key:
             raise HunterError("hunter_missing_key", "HUNTER_API_KEY is not set")
         h = self.cfg.hunter
@@ -63,6 +66,7 @@ class HunterClient:
                 pass
             raise HunterError(codes.get(r.status_code, f"hunter_http_{r.status_code}"), detail)
         data = r.json()
+        self.store.log_hunter_call(domain)
         self.store.put_hunter(domain, data)   # cache successes, including empty results
         return data, True
 

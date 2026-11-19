@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Sprinto Outbound{% endblock %}</title>
+<style>
+  :root { --bg:#fbfaf7; --surface:#fff; --text:#1d1d1b; --muted:#5f5e59; --line:#e4e2dc; --accent:#2f5d50;
+          --accent-soft:#e6efeb; --ok:#2f6f3e; --warn:#8a6a12; --bad:#a33a2a; --code:#f4f2ec; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg:#151614; --surface:#1d1f1c; --text:#ecebe6; --muted:#a8a79f; --line:#33352f; --accent:#8cc3ae;
+    --accent-soft:#233630; --ok:#86c793; --warn:#e0bf62; --bad:#ee8f7f; --code:#22241f; } }
+  :root[data-theme="dark"] { --bg:#151614; --surface:#1d1f1c; --text:#ecebe6; --muted:#a8a79f; --line:#33352f;
+    --accent:#8cc3ae; --accent-soft:#233630; --ok:#86c793; --warn:#e0bf62; --bad:#ee8f7f; --code:#22241f; }
+  * { box-sizing:border-box; } html,body { margin:0; }
+  body { background:var(--bg); color:var(--text); font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  nav { border-bottom:1px solid var(--line); background:var(--surface); }
+  nav .in { max-width:1000px; margin:0 auto; padding:12px 16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  nav a { color:var(--text); text-decoration:none; } nav a.brand { font-weight:700; margin-right:auto; }
+  nav form { margin:0; }
+  main { max-width:1000px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:1.6rem; margin:0 0 8px; } h2 { font-size:1.15rem; margin:28px 0 10px; }
+  p.muted, .muted { color:var(--muted); }
+  a { color:var(--accent); }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin:12px 0; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:var(--accent-soft); font-weight:600; } tr:last-child td { border-bottom:none; }
+  .wrap { overflow-x:auto; }
+  pre { background:var(--code); border:1px solid var(--line); border-radius:8px; padding:12px; overflow-x:auto;
+        white-space:pre-wrap; word-break:break-word; font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; margin:8px 0 0; }
+  .badge { display:inline-block; padding:1px 8px; border-radius:999px; font-size:.8rem; font-weight:600; border:1px solid var(--line); }
+  .s-sent,.s-drafted,.s-done { color:var(--ok); } .s-needs_review,.s-running,.s-pending { color:var(--warn); }
+  .s-dropped,.s-skipped { color:var(--muted); } .s-failed { color:var(--bad); }
+  button,.btn { font:inherit; padding:7px 14px; border-radius:8px; border:1px solid var(--accent); background:var(--accent);
+                color:var(--bg); cursor:pointer; text-decoration:none; display:inline-block; }
+  button.ghost { background:transparent; color:var(--accent); }
+  button.danger { background:transparent; color:var(--bad); border-color:var(--bad); }
+  input,select,textarea { font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line);
+                          border-radius:8px; padding:7px 9px; max-width:100%; }
+  textarea { width:100%; }
+  label { display:block; margin:8px 0 4px; font-weight:600; font-size:.92rem; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .msg { padding:10px 14px; border-radius:8px; background:var(--accent-soft); margin:12px 0; }
+  .err { padding:10px 14px; border-radius:8px; border:1px solid var(--bad); color:var(--bad); margin:12px 0; }
+  details summary { cursor:pointer; font-weight:600; }
+</style>
+</head>
+<body>
+<nav><div class="in">
+  <a class="brand" href="/">Sprinto Outbound</a>
+  <a href="/">Runs</a>
+  {% if operator %}
+    <a href="/run">New run</a>
+    <a href="/review">Review</a>
+    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="ghost" type="submit">Log out</button></form>
+  {% elif operator_enabled %}
+    <a href="/login">Operator login</a>
+  {% endif %}
+</div></nav>
+<main>
+{% block body %}{% endblock %}
+</main>
+</body>
+</html>

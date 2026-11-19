@@ -72,7 +72,11 @@ def decision_line(rec: DecisionRecord, q: int) -> list[str]:
     return [f"Status: {s.value}"]
 
 
-def render_record(rec: DecisionRecord, claims: Claims | None = None, full: bool = False) -> str:
+def render_record(rec: DecisionRecord, claims: Claims | None = None, full: bool = False,
+                  public: bool = False) -> str:
+    """public=True hides personal data (people's names, pains, email bodies, review notes)."""
+    if public:
+        full = False
     q = 10_000 if full else 90
     L = [f"━━ {rec.domain}  →  {rec.status.value.upper()}"
          + (f" ({rec.reason_code})" if rec.reason_code and rec.status != Status.drafted else "")
@@ -113,18 +117,20 @@ def render_record(rec: DecisionRecord, claims: Claims | None = None, full: bool 
 
     if rec.contact:
         c = rec.contact
-        L.append(f"Contact: {c.name}, {c.title or 'title unknown'}"
+        L.append(f"Contact: {'(name hidden)' if public else c.name}, {c.title or 'title unknown'}"
                  + (f" (Hunter confidence {c.hunter_confidence})" if c.hunter_confidence is not None else ""))
         L.append(f"  why: {_short(c.why_chosen, 200 if not full else q)}")
         if c.alternatives:
-            alts = [f"{a.get('name')} ({a.get('title')}): {a.get('excluded') or 'rank ' + str(a.get('rank'))}"
+            alts = [f"{'' if public else str(a.get('name')) + ' '}({a.get('title')}): "
+                    f"{a.get('excluded') or 'rank ' + str(a.get('rank'))}"
                     for a in c.alternatives]
             L.append(f"  also considered ({len(alts)}): " + _short("; ".join(alts), 220 if not full else q))
 
     if rec.pains:
         L.append("Pains (hypotheses):")
         for i, p in enumerate(rec.pains, 1):
-            L.append(f"  {i}. {_short(p.hypothesis, 160 if not full else q)}  [{', '.join(p.linked_fields)}]")
+            text = '[hidden in public view]' if public else _short(p.hypothesis, 160 if not full else q)
+            L.append(f"  {i}. {text}  [{', '.join(p.linked_fields)}]")
 
     if rec.qa_results:
         passed = [r.variant for r in rec.qa_results if r.passed]
@@ -137,7 +143,8 @@ def render_record(rec: DecisionRecord, claims: Claims | None = None, full: bool 
             L.append(f"Judge: not called ({rec.judge.skipped}); chose v{rec.judge.chosen_variant}")
         else:
             scores = ", ".join(f"v{k}={v}" for k, v in rec.judge.scores.items())
-            L.append(f"Judge: chose v{rec.judge.chosen_variant} ({scores}) — {_short(rec.judge.rationale, 180)}")
+            why = '' if public else f" — {_short(rec.judge.rationale, 180)}"
+            L.append(f"Judge: chose v{rec.judge.chosen_variant} ({scores}){why}")
 
     if rec.drafts and rec.chosen_draft is not None:
         d = next(x for x in rec.drafts if x.variant == rec.chosen_draft)
@@ -146,7 +153,8 @@ def render_record(rec: DecisionRecord, claims: Claims | None = None, full: bool 
         if d.hook_field:
             L.append(f"  hook: {_fact(rec.fields, d.hook_field, q)}")
         if d.pain_index and rec.pains and d.pain_index <= len(rec.pains):
-            L.append(f"  pain: #{d.pain_index} {_short(rec.pains[d.pain_index - 1].hypothesis, 120)}")
+            ptxt = '[hidden in public view]' if public else _short(rec.pains[d.pain_index - 1].hypothesis, 120)
+            L.append(f"  pain: #{d.pain_index} {ptxt}")
         if d.claim_id:
             text = next((c.text for c in (claims.claims if claims else []) if c.id == d.claim_id), "")
             L.append(f'  proof point: {d.claim_id}' + (f' "{_short(text, 100)}"' if text else ""))
@@ -158,12 +166,12 @@ def render_record(rec: DecisionRecord, claims: Claims | None = None, full: bool 
     rv = rec.review
     for h in rv.history:
         L.append(f"Earlier review: {h.get('decision')}" + (f" ({h.get('reason_code')})" if h.get("reason_code") else "")
-                 + (f" — {_short(h.get('note'), 100)}" if h.get("note") else ""))
+                 + (f" — {_short(h.get('note'), 100)}" if h.get("note") and not public else ""))
     if rv.decision:
         bits = [rv.decision] + ([rv.reason_code] if rv.reason_code else [])
         if rv.edit_ratio is not None and rv.decision == "edit":
             bits.append(f"edit ratio {rv.edit_ratio:.2f}" + (", REWRITE" if rv.rewrite else ""))
-        L.append("Review: " + ", ".join(bits) + (f" — {_short(rv.note, 120)}" if rv.note else ""))
+        L.append("Review: " + ", ".join(bits) + (f" — {_short(rv.note, 120)}" if rv.note and not public else ""))
     o = rec.outcome
     if o.recorded_at:
         L.append(f"Outcome ({o.source}): replied={o.replied or '-'} meeting={o.meeting} bounced={o.bounced}")
@@ -196,8 +204,8 @@ def render_totals(records: list[DecisionRecord]) -> str:
 
 
 def render_run(run_id: str, config_version: int | None, records: list[DecisionRecord],
-               claims: Claims | None = None, full: bool = False) -> str:
+               claims: Claims | None = None, full: bool = False, public: bool = False) -> str:
     head = f"Run {run_id}" + (f" (config v{config_version})" if config_version is not None else "")
     order = {Status.sent: 0, Status.drafted: 1, Status.needs_review: 2, Status.dropped: 3, Status.failed: 4}
     recs = sorted(records, key=lambda r: (order.get(r.status, 9), r.domain))
-    return "\n\n".join([head, *(render_record(r, claims, full) for r in recs), render_totals(records)])
+    return "\n\n".join([head, *(render_record(r, claims, full, public) for r in recs), render_totals(records)])

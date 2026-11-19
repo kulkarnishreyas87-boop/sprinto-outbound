@@ -107,6 +107,8 @@ contacts:
     type: personal
     department: [executive, it, management]
     seniority: [senior, executive]
+  # Free plan is ~25 searches/month: refuse new searches once 20 were made in a rolling 30 days.
+  hunter_monthly_cap: 20
   min_confidence: 80
   exclude_title_keywords: [sales, marketing, growth, recruit, talent, "human resources", hr, people ops, account executive, sdr, bdr, partnerships]
   ranking:

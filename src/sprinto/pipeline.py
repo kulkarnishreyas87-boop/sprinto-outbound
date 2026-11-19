@@ -1,6 +1,8 @@
 """Stage orchestration: S1 -> S2/S2b -> S3 -> S4 loop -> S6 -> S8. Send (S11) is a separate human step."""
 from __future__ import annotations
 
+import logging
+import os
 import time
 import uuid
 from contextlib import contextmanager
@@ -22,7 +24,7 @@ from .qualify import qualify
 from .models import Contact, DecisionRecord, ExtractedFields, PageFetch, Rejection, StageFailure, Status
 from .store import Store
 
-RUNS_DIR = ROOT / "runs"
+RUNS_DIR = Path(os.environ.get("RUNS_DIR") or ROOT / "runs")   # Vercel: /tmp/runs (read-only bundle)
 
 
 @contextmanager
@@ -46,12 +48,17 @@ def _plain(value):
     return value
 
 
-def export_record(rec: DecisionRecord, runs_dir: Path = RUNS_DIR) -> Path:
-    d = runs_dir / rec.run_id
-    d.mkdir(parents=True, exist_ok=True)
-    path = d / f"{rec.domain}.json"
-    path.write_text(rec.model_dump_json(indent=2), encoding="utf-8")
-    return path
+def export_record(rec: DecisionRecord, runs_dir: Path | None = None) -> Path | None:
+    """JSON copy of the decision record. Best-effort: the database holds the real record."""
+    try:
+        d = (runs_dir or RUNS_DIR) / rec.run_id
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / f"{rec.domain}.json"
+        path.write_text(rec.model_dump_json(indent=2), encoding="utf-8")
+        return path
+    except OSError as e:
+        logging.getLogger(__name__).warning("could not export %s: %s", rec.record_id, type(e).__name__)
+        return None
 
 
 def _detect_hosted_trust(fields: ExtractedFields, raw: str, url: str, cfg: Config) -> ExtractedFields:
@@ -85,9 +92,14 @@ def _extract_and_check(rec: DecisionRecord, llm: LLMProvider, domain: str, pages
 
 
 def read_domains(path: Path) -> list[str]:
-    """S0: normalise each line to its root domain, skip blanks/comments, dedupe (order kept)."""
+    """S0 from a file (-sig: Windows tools add a BOM)."""
+    return read_domains_text(Path(path).read_text(encoding="utf-8-sig"))
+
+
+def read_domains_text(text: str) -> list[str]:
+    """S0: normalise each line (or comma-separated item) to its root domain, skip blanks/comments, dedupe."""
     seen, out = set(), []
-    for line in Path(path).read_text(encoding="utf-8-sig").splitlines():   # -sig: Windows tools add a BOM
+    for line in text.lstrip("﻿").replace(",", "\n").splitlines():
         d = normalize_domain(line.split("#")[0])
         if d and "." in d and d not in seen:
             seen.add(d)

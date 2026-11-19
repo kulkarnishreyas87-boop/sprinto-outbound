@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Run {{ run_id }} · Sprinto Outbound{% endblock %}
+{% block body %}
+<h1>Run {{ run_id }}</h1>
+<p class="muted">Config v{{ version }}.
+  {% if public %}Public view: people's names, pains, email bodies and review notes are hidden.{% else %}Operator view: full detail.{% endif %}</p>
+{% set pending = items | selectattr("state", "in", ["pending", "running"]) | list %}
+{% if pending %}<div class="msg">{{ pending|length }} compan{{ "y" if pending|length == 1 else "ies" }} still to process.
+  {% if not public %}<a href="/runs/{{ run_id }}/live">Continue the run</a>{% endif %}</div>{% endif %}
+{% for s in items if s.state == "skipped" %}<div class="card muted">{{ s.domain }}: skipped ({{ s.note }})</div>{% endfor %}
+{% for b in blocks %}
+<div class="card">
+  <div class="row"><strong>{{ b.domain }}</strong>
+    <span class="badge s-{{ b.status }}">{{ b.status }}</span>
+    {% if b.tier %}<span class="badge">tier {{ b.tier }}</span>{% endif %}
+    {% if b.reason and b.status != "drafted" %}<span class="muted">{{ b.reason }}</span>{% endif %}</div>
+  <details {% if loop.length <= 3 %}open{% endif %}><summary>Why</summary><pre>{{ b.text }}</pre></details>
+</div>
+{% else %}
+<div class="card">No companies finished in this run yet.</div>
+{% endfor %}
+{% if blocks %}<pre>{{ totals }}</pre>{% endif %}
+{% endblock %}

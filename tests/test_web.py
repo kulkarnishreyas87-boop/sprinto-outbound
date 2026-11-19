@@ -217,5 +217,16 @@ def test_hunter_usage_shown_on_run_page(web):
     assert "0 of 20 searches used" in web.get("/run").text
 
 
+def test_vercel_without_database_shows_setup_page_not_500(web, monkeypatch):
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "sekret-value-should-never-render")
+    r = web.get("/")
+    assert r.status_code == 503 and "Setup needed" in r.text and "DATABASE_URL" in r.text
+    assert "GEMINI_API_KEY" not in r.text.split("Missing settings")[1].split("</ul>")[0]   # set => not listed
+    assert "sekret-value" not in r.text
+    assert web.get("/healthz").json() == {"ok": True}
+
+
 def test_healthz(web):
     assert web.get("/healthz").json() == {"ok": True}

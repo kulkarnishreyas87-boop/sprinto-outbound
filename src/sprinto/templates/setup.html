@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Setup needed · Sprinto Outbound{% endblock %}
+{% block body %}
+<h1>Setup needed</h1>
+<p class="muted">The app is deployed, but it has no database yet, so it can't store runs. Nothing is broken: a few
+  settings are missing in the Vercel project.</p>
+<div class="card">
+  <strong>Missing settings</strong>
+  <ul>{% for k in missing %}<li><code>{{ k }}</code></li>{% endfor %}</ul>
+</div>
+<div class="card">
+  <ol>
+    <li>Vercel project → <b>Storage</b> → <b>Create Database</b> → <b>Neon</b>, connected to this project. This sets <code>DATABASE_URL</code>.</li>
+    <li>Vercel project → <b>Settings → Environment Variables</b>: add the other missing names.</li>
+    <li><b>Deployments</b> → latest → <b>Redeploy</b>.</li>
+  </ol>
+</div>
+{% endblock %}

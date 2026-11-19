@@ -38,8 +38,27 @@ app = FastAPI(title="Sprinto Outbound", docs_url=None, redoc_url=None, openapi_u
 
 # ---------- helpers ----------
 
+class NotConfigured(Exception):
+    pass
+
+
+REQUIRED_ENV = ["DATABASE_URL", "GEMINI_API_KEY", "HUNTER_API_KEY", "RESEND_API_KEY", "MY_EMAIL",
+                "OPERATOR_PASSWORD", "SESSION_SECRET"]
+
+
 def get_store() -> Store:
+    # On Vercel the bundle is read-only: without Postgres there is nowhere to keep data.
+    if os.environ.get("VERCEL") and not os.environ.get("DATABASE_URL"):
+        raise NotConfigured()
     return Store()
+
+
+@app.exception_handler(NotConfigured)
+def not_configured(request: Request, exc: NotConfigured):
+    missing = [k for k in REQUIRED_ENV if not os.environ.get(k)]     # names only, never values
+    return TEMPLATES.TemplateResponse(request, "setup.html", {
+        "request": request, "missing": missing, "operator": False, "operator_enabled": False, "csrf": ""},
+        status_code=503)
 
 
 @lru_cache(maxsize=1)

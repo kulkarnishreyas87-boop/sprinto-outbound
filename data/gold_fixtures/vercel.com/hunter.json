@@ -1,0 +1,19 @@
+{
+  "_fixture": "hand-written for gold case hunter_only_sales: fake people, only excluded functions. Never sent anywhere.",
+  "data": {
+    "domain": "vercel.com",
+    "emails": [
+      {"value": "gold-fixture-1@example.invalid", "first_name": "Fixture", "last_name": "One",
+       "position": "VP of Sales", "confidence": 96},
+      {"value": "gold-fixture-2@example.invalid", "first_name": "Fixture", "last_name": "Two",
+       "position": "Head of Marketing", "confidence": 93},
+      {"value": "gold-fixture-3@example.invalid", "first_name": "Fixture", "last_name": "Three",
+       "position": "Senior Technical Recruiter", "confidence": 90},
+      {"value": "gold-fixture-4@example.invalid", "first_name": "Fixture", "last_name": "Four",
+       "position": "Enterprise Account Executive", "confidence": 88},
+      {"value": "gold-fixture-5@example.invalid", "first_name": "Fixture", "last_name": "Five",
+       "position": "Growth Marketing Manager", "confidence": 85}
+    ]
+  },
+  "meta": {"results": 5}
+}

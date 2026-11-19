@@ -1,0 +1,12 @@
+# Approved Sprinto proof points. The drafting stage uses ONLY claims with approved: true.
+# These are placeholders; replace them with wording the Growth Lead has signed off on.
+# Never add customer counts, percentages or timelines that are not confirmed.
+claims:
+  - id: placeholder_frameworks
+    text: "Sprinto automates evidence collection for SOC 2, ISO 27001, GDPR and HIPAA from one place."
+    approved: true
+    source: "Approved as worded by the Growth Lead in chat, 2026-11-19 (public source link still TODO)"
+  - id: placeholder_speed
+    text: "TODO: an approved statement about time to audit-readiness"
+    approved: false
+    source: "TODO"

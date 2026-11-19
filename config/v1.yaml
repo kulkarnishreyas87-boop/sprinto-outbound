@@ -1,0 +1,132 @@
+# Sprinto outbound pipeline: versioned config.
+# The pipeline never edits this file. Changes go to v{N+1}.yaml via `cli propose`
+# and become active only via `cli promote` after `cli test-gold` passes.
+version: 1
+description: "Initial hand-written config"
+
+models:
+  # Switched from Claude to Gemini on 19 Nov 2026 at the Growth Lead's request (before any live run).
+  # effort maps to Gemini thinking_level. Thinking tokens count toward max_tokens, so leave headroom.
+  # Prices are USD per million tokens (paid tier, prompts <=200k), used only for the cost estimate.
+  provider: gemini
+  extract:  {model: gemini-3.5-flash-lite, effort: low,    max_tokens: 16000}
+  support:  {model: gemini-3.5-flash-lite, effort: medium, max_tokens: 8000}   # does each quote support its value?
+  qualify:  {model: gemini-3.5-flash-lite, effort: medium, max_tokens: 8000}
+  pains:    {model: gemini-4-hydrogen,     effort: medium, max_tokens: 8000}
+  draft:    {model: gemini-4-hydrogen,     effort: medium, max_tokens: 16000}
+  judge:    {model: gemini-4-hydrogen,     effort: low,    max_tokens: 8000}
+  refusal_fallbacks: false   # Anthropic-only feature; unused with Gemini
+  prices:
+    gemini-3.5-flash-lite: {input: 0.30, output: 2.50}
+    gemini-4-hydrogen:     {input: 1.50, output: 7.50}
+    claude-haiku-5-5:      {input: 0.10, output: 0.50}
+    claude-sonnet-5-5:     {input: 2.00, output: 10.00}
+
+input:
+  recheck_after_days: 30
+
+scrape:
+  user_agent: "SprintoOutboundResearch/0.1 (+class project; single-page fetches, robots.txt respected)"
+  delay_seconds: [1.0, 3.0]
+  timeout_seconds: 20
+  render_fallback_min_words: 200
+  min_block_words: 8
+  max_tokens_per_page: 2000
+  # Links under these first path segments are never treated as company pages (e.g. /docs/.../trustpilot).
+  skip_path_sections: [docs, doc, help, changelog, api, integrations, guides, templates, community, kb,
+                       support, legal, tutorials, examples]
+  # A keyword matches a whole path segment (/trust/, /trust-center/), never a word prefix (/trustpilot/).
+  page_keywords:
+    careers: [careers, jobs, join-us, work-with-us, hiring]
+    trust: [trust, trust-center, trustcenter]
+    security: [security, compliance]
+    pricing: [pricing, plans]
+    customers: [customers, case-studies, testimonials]
+    about: [about, company]
+    press: [press, news, newsroom, blog/funding]
+
+extraction:
+  # Order = loop priority: the evidence loop chases the first unresolved field first.
+  # The competitor check comes first (a hard disqualifier is the cheapest early exit), then the strongest
+  # buying signals; buyer_type / is_saas usually come free with other pages.
+  required_fields: [compliance_tool_named, compliance_security_roles, certifications_named, enterprise_tier_present,
+                    buyer_type, is_saas]
+
+loop:
+  max_extra_fetches: 4    # beyond the homepage; hard cap
+  # field -> pages to try, in priority order
+  page_map:
+    funding_stage_stated: [press, about, careers]
+    compliance_security_roles: [careers]
+    open_roles_total: [careers]
+    certifications_named: [trust, security]
+    compliance_tool_named: [trust, security]
+    buyer_type: [customers, pricing]
+    is_saas: [pricing, about]
+    enterprise_tier_present: [pricing]
+    enterprise_customers_named: [customers]
+    regions_served: [about, pricing]
+
+jobboards:
+  # A posting counts as a compliance/security role if its title matches, or its description mentions one of these.
+  title_keywords: [security, compliance, grc, governance, infosec, "information security", privacy, "soc 2", "iso 27001"]
+  description_keywords: ["soc 2", "soc2", "iso 27001", "iso/iec 27001", "grc"]
+  max_postings_in_text: 150
+
+gates:
+  competitor_tools: [Vanta, Drata, Secureframe, Scrut, Thoropass, OneTrust, Tugboat]
+  # Hosted trust centres show the tool only in asset URLs, not visible text. Code scans raw HTML for
+  # these markers (the one exception to "quotes must be visible text"). Add a marker only after seeing
+  # it on a real page. Observed 2026-11-19: trust.linear.app, trust.attio.com, trust.plain.com.
+  # SafeBase pages that link to Drata are deliberately NOT listed: that doesn't show which GRC tool is used.
+  hosted_trust_markers:
+    Vanta: ["static.vanta.com", "assets.vanta.com"]
+  drop_if:
+    b2c: true
+    agency_or_services: true
+    compliance_vendor: true
+    competitor_tool: true
+
+tiers:
+  # Code enforces these; the model's tier can only be lowered, never raised.
+  # A = clear moment + at least one strong signal (verified). B = fit signals, no trigger.
+  # C = plausible fit but stage unknown (or moment not backed by evidence) -> review, no draft.
+  strong_signal_role_max_age_days: 60
+  in_progress_phrases: ["in progress", "working towards", "working toward", "pursuing", "underway",
+                        "currently undergoing", "expect our audit", "preparing for"]
+  sensitive_data: [health, payments, pii]
+  stage_proxies:
+    min_open_roles: 5
+    enterprise_tier: true
+    named_round: true
+
+contacts:
+  # Hunter free plan returns max 10 results per call, so filter server-side to likely buyers.
+  hunter:
+    limit: 10
+    type: personal
+    department: [executive, it, management]
+    seniority: [senior, executive]
+  min_confidence: 80
+  exclude_title_keywords: [sales, marketing, growth, recruit, talent, "human resources", hr, people ops, account executive, sdr, bdr, partnerships]
+  ranking:
+    first_certification: [cto, "technical co-founder", "vp engineering", "head of engineering", ceo, founder]
+    expansion: [ciso, "head of security", grc, compliance, cto]
+    hiring_manager_for_open_role: ["head of security", "vp engineering", cto]
+
+qa:
+  min_words: 70
+  max_words: 135
+  question_marks: 1
+  banned_phrases: ["hope this finds you well", "just checking in", "quick question", "touch base", "circle back", "synergy", "game-changer", "revolutionize"]
+  subject_max_words: 7
+  # Frameworks the email may name only if they appear in the evidence or the claim it uses.
+  frameworks: ["SOC 2", "SOC2", "ISO 27001", "ISO 27701", "ISO 42001", "GDPR", "HIPAA", "PCI DSS", "CCPA",
+               "FedRAMP", "HITRUST", "NIST", "DORA", "NIS2"]
+  variants: 3
+  regenerate_attempts: 1
+
+feedback:
+  reason_codes: [wrong_company, wrong_person, weak_hook, factual_error, wrong_tone, wrong_pain, too_long, other]
+  rewrite_edit_ratio: 0.33
+  min_occurrences_for_proposal: 3

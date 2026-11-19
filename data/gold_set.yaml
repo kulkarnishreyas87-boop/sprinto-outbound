@@ -1,0 +1,51 @@
+# Gold set: hand-labelled expected outcomes for `test-gold`.
+# Fixtures for each case live in data/gold_fixtures/<domain>/ (build with `test-gold --freeze <domain>`
+# after researching the domain once). Fields left null are not compared. "sent" means "drafted and
+# waiting for approval": gold runs never send.
+#
+# Status of each label (2026-11-19):
+#   CONFIRMED   = a live pipeline run produced this outcome
+#   UNCONFIRMED = chosen from live public data (job boards, trust pages), not yet run end to end.
+#                 Growth Lead: confirm or correct after the first live run.
+cases:
+  # 1. Clear tier-A fit with an open security role. CONFIRMED (run 20261119-121951-b90900):
+  #    resend.com/careers lists "Security Engineer, Platform"; /security says "Resend is SOC 2 Type II
+  #    compliant" -> expansion, tier A, contact chosen: CTO.
+  - id: tier_a_open_role
+    domain: resend.com
+    expected: {status: sent, tier: A, moment: expansion, contact_title: cto}
+
+  # 2. Already SOC 2 and expanding. LABEL VERIFIED, PIPELINE CURRENTLY FAILS (known recall gap):
+  #    trust.posthog.com says "Our products are covered by our SOC 2 Type II report", but no page the
+  #    pipeline fetches links to it, so it returns first_certification / tier B. Kept on purpose so the
+  #    gold set measures the fix (e.g. probing trust.<domain> within the loop cap).
+  - id: soc2_expanding
+    domain: posthog.com
+    expected: {status: sent, tier: null, moment: expansion, contact_title: null}
+    allowed_tiers: [A, B]
+
+  # 3. Trust centre run by a competitor tool. CONFIRMED (run 20261119-115149-74a5ac):
+  #    linear.app/security links trust.linear.app, whose HTML loads static.vanta.com.
+  - id: competitor_trust_centre
+    domain: linear.app
+    expected: {status: dropped, reason_code: "dropped:competitor_tool"}
+
+  # 4. B2C / non-SaaS. CONFIRMED (run 20261119-115840-b6aa1d): dropped on the homepage, no Hunter call.
+  - id: b2c_or_non_saas
+    domain: allbirds.com
+    expected: {status: dropped, reason_code: "dropped:b2c"}
+
+  # 5. Thin homepage that needs a deeper page. CONFIRMED (run 20261119-115840-b6aa1d):
+  #    4 loop fetches (security, blocked trust.clerk.com, careers, Ashby board); "Clerk has been SOC 2
+  #    Type 2 and HIPAA certified since May 2022" -> expansion, tier B, drafted.
+  - id: thin_homepage_needs_careers
+    domain: clerk.com
+    expected: {status: null, min_loop_iterations: 1}
+    allowed_statuses: [sent, needs_review]
+
+  # 6. Hunter returns only sales/marketing people. Uses a HAND-WRITTEN Hunter fixture
+  #    (data/gold_fixtures/vercel.com/hunter.json) so no quota is spent. CONFIRMED (run
+  #    20261119-120730-7e86a2): expansion, tier A on the GRC Analyst role, then no_suitable_contact.
+  - id: hunter_only_sales
+    domain: vercel.com
+    expected: {status: needs_review, reason_code: no_suitable_contact}

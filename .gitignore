@@ -1,0 +1,27 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# local data
+data/pipeline.db
+data/*.db-journal
+runs/*
+!runs/.gitkeep
+
+# gold-set page snapshots are copies of other companies' websites: keep them local.
+# Rebuild with `test-gold --freeze <domain>`. Hand-written Hunter fixtures (fake people) stay tracked.
+data/gold_fixtures/*/pages.json
+# real Hunter responses hold real people's names and emails: never publish them.
+# Only the hand-written fixture with fake people is tracked.
+data/gold_fixtures/*/hunter.json
+!data/gold_fixtures/vercel.com/hunter.json
+# proposals contain real drafted emails and prospect names
+proposals/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/

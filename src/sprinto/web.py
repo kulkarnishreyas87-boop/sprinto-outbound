@@ -145,7 +145,15 @@ def index(request: Request):
             runs.append({"run_id": r["run_id"], "version": r["config_version"], "started": str(r["started_at"])[:16],
                          "n": len(recs), "counts": Counter(x.status.value for x in recs),
                          "usd": sum(x.cost.usd_estimate for x in recs)})
-        return render(request, "index.html", runs=runs, active=store.active_run_id())
+        status = {
+            "database": "Postgres" if store.is_postgres else "SQLite (local)",
+            "operator": operator_enabled(),
+            "runs": len(runs),
+            "companies": sum(r["n"] for r in runs),
+            "drafted": sum(r["counts"].get("drafted", 0) + r["counts"].get("sent", 0) for r in runs),
+            "config": cfg().version,
+        }
+        return render(request, "index.html", runs=runs, active=store.active_run_id(), status=status)
     finally:
         store.close()
 

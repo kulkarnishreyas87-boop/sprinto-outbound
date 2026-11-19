@@ -1,11 +1,56 @@
 {% extends "base.html" %}
 {% block body %}
-<h1>Outbound research runs</h1>
-<p class="muted">Each run takes a list of company domains and decides, for each one, whether to drop it, flag it for
-  review or draft an email, with every decision explained from verified evidence.
-  {% if not operator %}This public view hides people's names, pain hypotheses and email bodies.{% endif %}</p>
+<style>
+  .hero { padding: 8px 0 4px; }
+  .hero h1 { font-size: clamp(1.7rem, 4vw, 2.3rem); line-height: 1.2; margin: 0 0 10px; }
+  .lead { font-size: 1.05rem; color: var(--muted); max-width: 48rem; margin: 0 0 18px; }
+  .cta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 6px 0 8px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 22px 0 6px; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .stat b { display: block; font-size: 1.35rem; }
+  .stat span { color: var(--muted); font-size: .85rem; }
+  .ok { color: var(--ok); } .off { color: var(--warn); }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  .step { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .step code { color: var(--accent); background: none; font-weight: 700; }
+  .step p { margin: 4px 0 0; color: var(--muted); font-size: .9rem; }
+  .empty { text-align: center; padding: 28px 16px; }
+</style>
+
+<section class="hero">
+  <p class="muted" style="margin:0 0 6px">Sprinto · outbound research and drafting</p>
+  <h1>From a list of domains to evidence-backed outreach</h1>
+  <p class="lead">For each company, the pipeline reads its website and checks every fact against a verbatim quote. It
+    qualifies the company on its compliance buying moment, picks the right person, and drafts an email a human
+    approves. Dropping or flagging a company is a correct outcome, not an error.</p>
+  <div class="cta">
+    {% if operator %}
+      <a class="btn" href="/run">Start a run</a>
+      <a class="btn" style="background:transparent;color:var(--accent)" href="/review">Open the review queue</a>
+    {% elif status.operator %}
+      <a class="btn" href="/login">Log in to start a run</a>
+    {% else %}
+      <span class="badge off">Running is switched off on this deployment</span>
+      <span class="muted">The owner still needs to add the API keys and operator password in Vercel.</span>
+    {% endif %}
+    <a href="https://github.com/kulkarnishreyas87-boop/sprinto-outbound">Source code</a>
+  </div>
+</section>
+
+<div class="stats">
+  <div class="stat"><b class="ok">● {{ status.database }}</b><span>database</span></div>
+  <div class="stat"><b class="{{ 'ok' if status.operator else 'off' }}">● {{ "On" if status.operator else "Off" }}</b><span>operator access</span></div>
+  <div class="stat"><b>{{ status.runs }}</b><span>runs</span></div>
+  <div class="stat"><b>{{ status.companies }}</b><span>companies researched</span></div>
+  <div class="stat"><b>{{ status.drafted }}</b><span>emails drafted or sent</span></div>
+  <div class="stat"><b>v{{ status.config }}</b><span>active config</span></div>
+</div>
+
 {% if active and operator %}<div class="msg">A run is in progress: <a href="/runs/{{ active }}/live">open it</a> to keep it going.</div>{% endif %}
+
+<h2>Runs</h2>
 {% if runs %}
+<p class="muted">{% if not operator %}This public view hides people's names, pain hypotheses and email bodies.{% endif %}</p>
 <div class="wrap"><table>
   <thead><tr><th>Run</th><th>Started (UTC)</th><th>Companies</th><th>Outcomes</th><th>Cost</th></tr></thead>
   <tbody>
@@ -21,6 +66,20 @@
   </tbody>
 </table></div>
 {% else %}
-<div class="card">No runs yet.</div>
+<div class="card empty">
+  <strong>No runs yet.</strong>
+  <p class="muted" style="margin:6px 0 0">{% if operator %}Start one with up to 15 company domains. Each company takes about 15–70 seconds.
+    {% else %}Runs appear here as soon as the operator starts one.{% endif %}</p>
+</div>
 {% endif %}
+
+<h2>How each company is decided</h2>
+<div class="steps">
+  <div class="step"><code>1 · Read</code><p>Homepage, then up to 4 more pages (careers, trust, pricing) and public job boards. robots.txt is respected.</p></div>
+  <div class="step"><code>2 · Verify</code><p>Every fact needs a verbatim quote that code finds on the page. A second check rejects quotes that don't back the value.</p></div>
+  <div class="step"><code>3 · Gate</code><p>Consumer brands, agencies, compliance vendors and companies whose trust centre runs on a competitor tool are dropped.</p></div>
+  <div class="step"><code>4 · Qualify</code><p>The model proposes a buying moment and tier. Code can only lower the tier, and stage is never guessed.</p></div>
+  <div class="step"><code>5 · Contact</code><p>Hunter, for tier A and B only. Ranked by role for the moment; sales, marketing and HR are never picked.</p></div>
+  <div class="step"><code>6 · Draft &amp; QA</code><p>Three variants checked in code for numbers, names, frameworks and length. A judge picks the best, and a human approves.</p></div>
+</div>
 {% endblock %}

@@ -11,6 +11,8 @@
 <div class="row" style="margin-bottom:12px">
   {% set pct = (100 * hunter_used / hunter_cap) if hunter_cap else 0 %}
   <span class="pill {{ 'st-failed' if pct >= 100 else ('st-needs_review' if pct >= 75 else 'st-done') }}"><span class="ic">●</span>Hunter {{ hunter_used }} / {{ hunter_cap }} this month</span>
+  {% set dpct = (100 * today_used / today_cap) if today_cap else 0 %}
+  <span class="pill {{ 'st-failed' if dpct >= 100 else ('st-needs_review' if dpct >= 75 else 'st-done') }}" data-tip="Shared by every visitor; resets on a rolling 24 hours"><span class="ic">●</span>{{ today_used }} / {{ today_cap }} companies today</span>
   {% if approved_claims %}<span class="pill st-done"><span class="ic">✓</span>{{ approved_claims }} approved claim{{ "s" if approved_claims != 1 }}</span>
   {% else %}<span class="pill st-needs_review"><span class="ic">!</span>No approved claims: nothing will be drafted</span>{% endif %}
 </div>

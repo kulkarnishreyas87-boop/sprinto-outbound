@@ -1,36 +1,38 @@
-"""Live web app (Vercel): public read-only reports; password-protected run + review.
+"""Live web app (Vercel): open to everyone, no login, with guardrails.
 
 Everything the pipeline decides is still decided by the same code as the CLI: this module only
 wires HTTP to `pipeline.run_slice`, `report.render_*` and `review.*`.
 
-Security:
-- operator routes need a signed session (OPERATOR_PASSWORD + SESSION_SECRET env vars; if either is
-  missing, operator routes are disabled), and every POST needs a CSRF token tied to that session;
-- the public view never shows people's names, pains, email bodies or review notes;
-- runs are capped (15 domains, one active batch); Hunter has a monthly cap in config.
+Guardrails (there is no password, so these are what protect the API credits and people's data):
+- people's names and emails are hidden on every page: reports use the public render and the review
+  form shows drafts with names masked as placeholders, which are filled back in before sending;
+- every POST needs a same-site token (double-submit cookie) and a matching Origin when one is sent,
+  so other websites cannot start runs or approve drafts on a visitor's behalf;
+- caps: 15 domains per batch, one active batch, 30 companies per rolling 24 hours, Hunter's monthly
+  cap in config; approved emails still only ever go to MY_EMAIL (enforced in send.py).
 """
 from __future__ import annotations
 
-import hashlib
 import hmac
 import os
+import re
 import secrets
-import time
 from collections import Counter
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .config import load_claims, load_config, load_settings
-from .models import Status
+from .models import DecisionRecord, Status
 from .store import Store
 
 MAX_DOMAINS = 15
-SESSION_COOKIE = "sprinto_session"
-SESSION_HOURS = 12
+DAILY_COMPANY_CAP = 30
+CSRF_COOKIE = "sprinto_csrf"
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 app = FastAPI(title="Sprinto Outbound", docs_url=None, redoc_url=None, openapi_url=None)
@@ -42,8 +44,7 @@ class NotConfigured(Exception):
     pass
 
 
-REQUIRED_ENV = ["DATABASE_URL", "GEMINI_API_KEY", "HUNTER_API_KEY", "RESEND_API_KEY", "MY_EMAIL",
-                "OPERATOR_PASSWORD", "SESSION_SECRET"]
+REQUIRED_ENV = ["DATABASE_URL", "GEMINI_API_KEY", "HUNTER_API_KEY", "RESEND_API_KEY", "MY_EMAIL"]
 
 
 def get_store() -> Store:
@@ -57,8 +58,7 @@ def get_store() -> Store:
 def not_configured(request: Request, exc: NotConfigured):
     missing = [k for k in REQUIRED_ENV if not os.environ.get(k)]     # names only, never values
     return TEMPLATES.TemplateResponse(request, "setup.html", {
-        "request": request, "missing": missing, "operator": False, "operator_enabled": False, "csrf": ""},
-        status_code=503)
+        "request": request, "missing": missing, "can_run": False, "csrf": ""}, status_code=503)
 
 
 @lru_cache(maxsize=1)
@@ -66,56 +66,72 @@ def cfg():
     return load_config()
 
 
-def _secret() -> bytes:
-    return os.environ.get("SESSION_SECRET", "").encode()
+def can_run() -> bool:
+    """Running needs the API keys. Off Vercel (CLI checkout, tests) settings come from .env / fakes."""
+    if not os.environ.get("VERCEL"):
+        return True
+    return all(os.environ.get(k) for k in REQUIRED_ENV)
 
 
-def operator_enabled() -> bool:
-    return bool(os.environ.get("OPERATOR_PASSWORD")) and len(_secret()) >= 16
+def _csrf_cookie(request: Request) -> str:
+    tok = request.cookies.get(CSRF_COOKIE, "")
+    return tok if re.fullmatch(r"[0-9a-f]{32}", tok) else ""
 
 
-def _sign(value: str) -> str:
-    return hmac.new(_secret(), value.encode(), hashlib.sha256).hexdigest()
+def check_post(request: Request, csrf: str | None = None) -> None:
+    """Same-site check for every POST: a cross-site page can neither read our cookie nor forge Origin."""
+    if not can_run():
+        raise HTTPException(503, "Running is switched off until the API keys are added.")
+    origin = request.headers.get("origin")
+    if origin and urlsplit(origin).netloc != request.headers.get("host", request.url.netloc):
+        raise HTTPException(403, "Cross-site request refused.")
+    cookie = _csrf_cookie(request)
+    sent = csrf or request.headers.get("x-csrf-token", "")
+    if not cookie or not hmac.compare_digest(sent, cookie):
+        raise HTTPException(403, "Page expired: reload it and try again.")
 
 
-def make_session() -> str:
-    payload = f"{int(time.time()) + SESSION_HOURS * 3600}.{secrets.token_hex(8)}"
-    return f"{payload}.{_sign(payload)}"
+def render(request: Request, name: str, status_code: int = 200, **ctx):
+    tok = _csrf_cookie(request) or secrets.token_hex(16)
+    ctx.update(request=request, can_run=can_run(), csrf=tok)
+    resp = TEMPLATES.TemplateResponse(request, name, ctx, status_code=status_code)
+    if tok != request.cookies.get(CSRF_COOKIE):
+        resp.set_cookie(CSRF_COOKIE, tok, httponly=True, samesite="strict",
+                        secure=request.url.scheme == "https", max_age=7 * 24 * 3600)
+    return resp
 
 
-def session_valid(token: str | None) -> bool:
-    if not token or not operator_enabled():
-        return False
-    try:
-        exp, nonce, sig = token.split(".")
-    except ValueError:
-        return False
-    return hmac.compare_digest(sig, _sign(f"{exp}.{nonce}")) and int(exp) > time.time()
+# ---------- people's names stay hidden ----------
+
+def _name_swaps(rec: DecisionRecord) -> list[tuple[str, str]]:
+    """(real text, placeholder) pairs, longest first, for the chosen contact and the alternatives."""
+    swaps: list[tuple[str, str]] = []
+    c = rec.contact
+    if c:
+        if c.email:
+            swaps.append((c.email, "[email]"))
+        parts = (c.name or "").split()
+        if len(parts) > 1:
+            swaps += [(c.name, "[full name]"), (parts[-1], "[last name]")]
+        if parts:
+            swaps.append((parts[0], "[first name]"))
+        for a in c.alternatives:
+            if a.get("name"):
+                swaps.append((str(a["name"]), "[someone]"))
+    return sorted({s for s in swaps if len(s[0]) >= 2}, key=lambda s: -len(s[0]))
 
 
-def csrf_token(request: Request) -> str:
-    return _sign("csrf:" + (request.cookies.get(SESSION_COOKIE) or ""))
+def mask_people(text: str, rec: DecisionRecord) -> str:
+    for real, ph in _name_swaps(rec):
+        text = re.sub(rf"(?<!\w){re.escape(real)}(?!\w)", ph, text)
+    return text
 
 
-def is_operator(request: Request) -> bool:
-    return session_valid(request.cookies.get(SESSION_COOKIE))
-
-
-def require_operator(request: Request, csrf: str | None = None, check_csrf: bool = False) -> None:
-    if not operator_enabled():
-        raise HTTPException(503, "Operator access is not configured on this deployment.")
-    if not is_operator(request):
-        raise HTTPException(401, "Log in first.")
-    if check_csrf:
-        sent = csrf or request.headers.get("x-csrf-token", "")
-        if not hmac.compare_digest(sent, csrf_token(request)):
-            raise HTTPException(403, "Bad or missing CSRF token. Reload the page and try again.")
-
-
-def render(request: Request, name: str, **ctx):
-    ctx.update(request=request, operator=is_operator(request), operator_enabled=operator_enabled(),
-               csrf=csrf_token(request) if is_operator(request) else "")
-    return TEMPLATES.TemplateResponse(request, name, ctx)
+def unmask_people(text: str, rec: DecisionRecord) -> str:
+    for real, ph in _name_swaps(rec):
+        if ph != "[someone]":
+            text = text.replace(ph, real)
+    return text
 
 
 def _pipeline_parts(store: Store):
@@ -167,7 +183,9 @@ def _summary(store: Store) -> dict:
         "hunter_used": store.hunter_calls_since(30),
         "hunter_cap": c.contacts.hunter_monthly_cap,
         "database": "Postgres" if store.is_postgres else "SQLite",
-        "operator": operator_enabled(),
+        "can_run": can_run(),
+        "today_used": store.companies_started_since(24),
+        "today_cap": DAILY_COMPANY_CAP,
         "config": c.version,
         "active_run": store.active_run_id(),
     }
@@ -200,7 +218,7 @@ def run_report(request: Request, run_id: str):
         run = store.get_run(run_id)
         if run is None:
             raise HTTPException(404, "No such run.")
-        public = not is_operator(request)
+        public = True       # open site: people's names, pains and email bodies never render here
         order = {Status.sent: 0, Status.drafted: 1, Status.needs_review: 2, Status.dropped: 3, Status.failed: 4}
         recs = sorted(store.records_for_run(run_id), key=lambda r: (order.get(r.status, 9), r.domain))
         claims = load_claims()
@@ -212,52 +230,28 @@ def run_report(request: Request, run_id: str):
         store.close()
 
 
-# ---------- auth ----------
-
-@app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request):
-    return render(request, "login.html", error=None)
-
-
-@app.post("/login")
-def login(request: Request, password: str = Form(...)):
-    if not operator_enabled():
-        raise HTTPException(503, "Operator access is not configured on this deployment.")
-    time.sleep(0.5)    # slows down password guessing
-    if not hmac.compare_digest(password.encode(), os.environ["OPERATOR_PASSWORD"].encode()):
-        return render(request, "login.html", error="Wrong password.")
-    resp = RedirectResponse("/run", status_code=303)
-    resp.set_cookie(SESSION_COOKIE, make_session(), max_age=SESSION_HOURS * 3600, httponly=True,
-                    samesite="lax", secure=request.url.scheme == "https")
-    return resp
-
-
-@app.post("/logout")
-def logout(request: Request, csrf: str = Form("")):
-    require_operator(request, csrf, check_csrf=True)
-    resp = RedirectResponse("/", status_code=303)
-    resp.delete_cookie(SESSION_COOKIE)
-    return resp
-
-
-# ---------- runs (operator) ----------
+# ---------- runs ----------
 
 @app.get("/run", response_class=HTMLResponse)
 def run_page(request: Request):
-    require_operator(request)
     store = get_store()
     try:
-        c = cfg()
-        return render(request, "run.html", active=store.active_run_id(), max_domains=MAX_DOMAINS,
-                      hunter_used=store.hunter_calls_since(30), hunter_cap=c.contacts.hunter_monthly_cap,
-                      approved_claims=len(load_claims().approved()), error=None)
+        return _run_form(request, store, error=None)
     finally:
         store.close()
 
 
+def _run_form(request: Request, store: Store, error: str | None, status_code: int = 200):
+    c = cfg()
+    return render(request, "run.html", status_code=status_code, active=store.active_run_id(),
+                  max_domains=MAX_DOMAINS, hunter_used=store.hunter_calls_since(30),
+                  hunter_cap=c.contacts.hunter_monthly_cap, approved_claims=len(load_claims().approved()),
+                  today_used=store.companies_started_since(24), today_cap=DAILY_COMPANY_CAP, error=error)
+
+
 @app.post("/runs")
 def start_run(request: Request, domains: str = Form(...), force: str = Form(""), csrf: str = Form("")):
-    require_operator(request, csrf, check_csrf=True)
+    check_post(request, csrf)
     from .pipeline import read_domains_text
 
     store = get_store()
@@ -268,12 +262,14 @@ def start_run(request: Request, domains: str = Form(...), force: str = Form(""),
         ds = read_domains_text(domains)
         c = cfg()
         if not ds or len(ds) > MAX_DOMAINS:
-            return render(request, "run.html", active=None, max_domains=MAX_DOMAINS,
-                          hunter_used=store.hunter_calls_since(30), hunter_cap=c.contacts.hunter_monthly_cap,
-                          approved_claims=len(load_claims().approved()),
-                          error=f"Give between 1 and {MAX_DOMAINS} valid domains (you gave {len(ds)}).")
+            return _run_form(request, store, f"Give between 1 and {MAX_DOMAINS} valid domains (you gave {len(ds)}).")
         skipped = [] if force else [d for d in ds if store.researched_recently(d, c.input.recheck_after_days)]
         todo = [d for d in ds if d not in skipped]
+        left = max(0, DAILY_COMPANY_CAP - store.companies_started_since(24))
+        if len(todo) > left:
+            return _run_form(request, store, status_code=429, error=(
+                f"Daily limit: {DAILY_COMPANY_CAP} companies per 24 hours across all visitors. "
+                f"{left} left right now, and this batch needs {len(todo)}."))
         run_id = store.create_run(c.version, todo)
         store.add_run_items(run_id, todo, skipped)
         if not todo:
@@ -285,7 +281,6 @@ def start_run(request: Request, domains: str = Form(...), force: str = Form(""),
 
 @app.get("/runs/{run_id}/live", response_class=HTMLResponse)
 def run_live(request: Request, run_id: str):
-    require_operator(request)
     store = get_store()
     try:
         if store.get_run(run_id) is None:
@@ -298,7 +293,7 @@ def run_live(request: Request, run_id: str):
 @app.post("/api/runs/{run_id}/next")
 def run_next(request: Request, run_id: str):
     """Process exactly one pending company (one function invocation per company)."""
-    require_operator(request, check_csrf=True)
+    check_post(request)
     from .pipeline import run_slice
 
     store = get_store()
@@ -327,11 +322,10 @@ def run_next(request: Request, run_id: str):
         store.close()
 
 
-# ---------- review (operator) ----------
+# ---------- review ----------
 
 @app.get("/review", response_class=HTMLResponse)
 def review_page(request: Request, msg: str = ""):
-    require_operator(request)
     from .report import render_record
     from .review import order_queue
 
@@ -342,12 +336,12 @@ def review_page(request: Request, msg: str = ""):
         items = []
         for r in queue:
             d = next((x for x in r.drafts if x.variant == r.chosen_draft), None)
-            items.append({"rec": r, "text": render_record(r, claims, full=True),
-                          "subject": d.subject if d else "", "body": d.body if d else ""})
+            items.append({"rec": r, "text": render_record(r, claims, public=True),
+                          "subject": mask_people(d.subject, r) if d else "",
+                          "body": mask_people(d.body, r) if d else ""})
         sent_rows = store.conn.execute(
             "SELECT record_json FROM decision_records WHERE status='sent' ORDER BY updated_at DESC LIMIT 20"
         ).fetchall()
-        from .models import DecisionRecord
         sent = [DecisionRecord.model_validate_json(x["record_json"]) for x in sent_rows]
         return render(request, "review.html", items=items, sent=sent, msg=msg,
                       reasons=cfg().feedback.reason_codes)
@@ -360,7 +354,7 @@ def review_action(request: Request, record_id: str, action: str = Form(...), csr
                   reason_code: str = Form(""), note: str = Form(""), subject: str = Form(""),
                   body: str = Form(""), hook_or_pain_changed: str = Form(""), replied: str = Form(""),
                   meeting: str = Form(""), bounced: str = Form("")):
-    require_operator(request, csrf, check_csrf=True)
+    check_post(request, csrf)
     from .review import ReviewError, approve, edit, record_outcome, reject, verdict
 
     store = get_store()
@@ -374,7 +368,8 @@ def review_action(request: Request, record_id: str, action: str = Form(...), csr
                 approve(rec, store, s)
                 msg = f"Approved and sent {rec.domain} to MY_EMAIL (id {rec.send.message_id})."
             elif action == "edit":
-                edit(rec, store, s, c, new_body=body, new_subject=subject, reason_code=reason_code,
+                # the form showed placeholders instead of names: put the real ones back before QA and send
+                edit(rec, store, s, c, new_body=unmask_people(body, rec), new_subject=unmask_people(subject, rec), reason_code=reason_code,
                      hook_or_pain_changed=bool(hook_or_pain_changed), note=note)
                 msg = f"Edited and sent {rec.domain} (rewrite: {rec.review.rewrite})."
             elif action == "reject":

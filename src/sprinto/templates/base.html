@@ -140,12 +140,9 @@
   <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Sprinto Outbound</a>
   {% set path = request.url.path %}
   <a class="navlink {{ 'on' if path == '/' }}" href="/">Dashboard</a>
-  {% if operator %}
-    <a class="navlink {{ 'on' if path.startswith('/run') and path == '/run' }}" href="/run">New run</a>
+  {% if can_run %}
+    <a class="navlink {{ 'on' if path == '/run' }}" href="/run">New run</a>
     <a class="navlink {{ 'on' if path.startswith('/review') }}" href="/review">Review</a>
-    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="ghost" type="submit" style="padding:6px 10px">Log out</button></form>
-  {% elif operator_enabled %}
-    <a class="navlink {{ 'on' if path == '/login' }}" href="/login">Operator login</a>
   {% endif %}
 </div></nav>
 <main><div class="container">
@@ -153,7 +150,7 @@
 </div></main>
 <footer><div class="container row" style="justify-content:space-between">
   <span>Sprinto Outbound · evidence-first research and drafting</span>
-  <span>Emails only ever go to the operator's own inbox · <a href="https://github.com/kulkarnishreyas87-boop/sprinto-outbound">Source</a></span>
+  <span>Names and emails stay hidden · approved emails only go to the owner's inbox · <a href="https://github.com/kulkarnishreyas87-boop/sprinto-outbound">Source</a></span>
 </div></footer>
 <div id="tip" role="tooltip"></div>
 <script>

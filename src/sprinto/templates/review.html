@@ -15,7 +15,8 @@
 {% block body %}
 <p class="eyebrow"><a href="/">Dashboard</a> / Review</p>
 <h1>Review queue</h1>
-<p class="lead">Ordered by tier, then strength of evidence. Approving sends the email to <b>your own inbox only</b>: the prospect never receives it.</p>
+<p class="lead">Ordered by tier, then strength of evidence. Approving sends the email to <b>the owner's inbox only</b>: the prospect never receives it.
+  Names show as placeholders such as <code>[first name]</code>; leave them in when editing and the real name is filled back in on send.</p>
 {% if msg %}<div class="msg fade-in">{{ msg }}</div>{% endif %}
 
 {% for it in items %}{% set r = it.rec %}

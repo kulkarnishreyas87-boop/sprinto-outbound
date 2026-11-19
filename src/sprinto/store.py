@@ -374,6 +374,14 @@ class Store:
         with self.tx() as c:
             c.execute("INSERT INTO hunter_calls(domain, at) VALUES (?,?)", (domain, _now()))
 
+    def companies_started_since(self, hours: int = 24) -> int:
+        """Companies admitted into web runs in the last `hours` (skipped ones are free)."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM run_items i JOIN runs r ON r.run_id=i.run_id"
+            " WHERE r.started_at>=? AND i.state!='skipped'", (cutoff,)).fetchone()
+        return int(row["n"])
+
     def hunter_calls_since(self, days: int = 30) -> int:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         row = self.conn.execute("SELECT COUNT(*) AS n FROM hunter_calls WHERE at>=?", (cutoff,)).fetchone()

@@ -21,7 +21,7 @@
 <p class="eyebrow"><a href="/">Dashboard</a> / Run</p>
 <h1 class="num" style="font-size:1.6rem">{{ run_id }}</h1>
 <p class="muted" style="margin:0">Config v{{ version }} ·
-  {% if public %}Public view: people's names, pains, email bodies and review notes are hidden.{% else %}Operator view: full detail.{% endif %}</p>
+  Open view: people's names, pains, email bodies and review notes are hidden.</p>
 
 {% set pending = items | selectattr("state", "in", ["pending", "running"]) | list %}
 {% if pending %}<div class="msg">{{ pending|length }} compan{{ "y" if pending|length == 1 else "ies" }} still to process.

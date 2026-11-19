@@ -50,15 +50,19 @@ Sprinto proof points live in `config/claims.yaml`. Only claims marked `approved:
 
 The same pipeline runs as a FastAPI app (`src/sprinto/web.py`), deployed on Vercel with Neon Postgres.
 
-- **Public, no login:** the list of runs, plus every company's decision, evidence, tier, hook, claim and cost. People's names, pain hypotheses, email bodies and review notes are hidden.
-- **Operator, password needed:**
-  - **New run:** up to 15 domains, one batch at a time. Each company runs in its own request, and the page updates as each one finishes.
-  - **Review:** approve and send, edit and send, or reject, using the reason codes; give verdicts on review-queue items; record outcomes.
-- **Guards:**
-  - every operator action needs a signed session plus a CSRF token;
-  - operator routes switch off unless both secrets are set;
-  - Hunter stops at `contacts.hunter_monthly_cap` searches in a rolling 30 days;
-  - email still goes only to `MY_EMAIL`.
+The site is open: there is no login. Anyone can do the following:
+- **Dashboard and reports:** the list of runs, plus every company's decision, evidence, tier, hook, claim and cost.
+- **New run:** up to 15 domains. Each company runs in its own request, and the page updates as each one finishes.
+- **Review:** approve and send, edit and send, or reject, using the reason codes; give verdicts on review-queue items; record outcomes.
+
+Guardrails, since there's no password:
+- People's names and emails are hidden on every page. Drafts in Review show placeholders such as `[first name]`, which are filled back in when the email is sent.
+- Every POST needs a same-site token (a double-submit cookie) and a matching `Origin`, so other websites can't trigger runs or sends.
+- Caps:
+  - one active batch;
+  - 30 companies per rolling 24 hours, shared by all visitors;
+  - Hunter stops at `contacts.hunter_monthly_cap` searches in a rolling 30 days.
+- Email still goes only to `MY_EMAIL`, enforced in `send.py`.
 
 Vercel environment variables:
 
@@ -66,8 +70,6 @@ Vercel environment variables:
 |---|---|
 | `DATABASE_URL` | Neon. Set automatically when Neon is added from Vercel → Storage. |
 | `GEMINI_API_KEY`, `HUNTER_API_KEY`, `RESEND_API_KEY`, `MY_EMAIL` | Same as `.env`. |
-| `OPERATOR_PASSWORD` | Password for the operator pages. |
-| `SESSION_SECRET` | Random string of 32 or more characters, used to sign sessions. |
 | `RUNS_DIR=/tmp/runs` | Optional. Where JSON copies of decision records are written. |
 
 To run the app locally: `uv run uvicorn sprinto.web:app --port 8765`. It uses SQLite unless `DATABASE_URL` is set.

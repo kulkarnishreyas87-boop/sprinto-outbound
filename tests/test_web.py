@@ -1,4 +1,4 @@
-"""Live web app: auth, CSRF, redaction, run loop, caps, review. Pipeline, settings and Resend are faked."""
+"""Live web app (open, no login): same-site token, redaction, run loop, caps, review. Pipeline, settings and Resend are faked."""
 import re
 
 import pytest
@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from sprinto.config import Settings
 from sprinto.models import Contact, DecisionRecord, Draft, Pain, Status
 
-PASSWORD = "correct horse battery staple"
 ME = "me@example.com"
 
 
@@ -23,8 +22,7 @@ def web(tmp_path, monkeypatch, cfg, make_fetcher):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setattr(Store.__init__, "__defaults__", (db,))
     monkeypatch.setattr("sprinto.pipeline.RUNS_DIR", tmp_path / "runs")
-    monkeypatch.setenv("OPERATOR_PASSWORD", PASSWORD)
-    monkeypatch.setenv("SESSION_SECRET", "s" * 32)
+    monkeypatch.delenv("VERCEL", raising=False)
     monkeypatch.setattr(web, "load_settings", lambda: Settings(my_email=ME, resend_api_key="x"))
     monkeypatch.setattr(web, "load_claims", lambda: CLAIMS)
     sent = []
@@ -49,8 +47,7 @@ def web(tmp_path, monkeypatch, cfg, make_fetcher):
 
 
 def login(client):
-    r = client.post("/login", data={"password": PASSWORD}, follow_redirects=False)
-    assert r.status_code == 303
+    """No login any more: just load a page, which sets the same-site token cookie, and read the token."""
     return re.search(r'name="csrf" value="([0-9a-f]+)"', client.get("/run").text).group(1)
 
 
@@ -74,62 +71,62 @@ def seed_record(db, status=Status.drafted):
 
 # ---------- public view ----------
 
-def test_public_report_hides_personal_data(web):
+def test_report_hides_personal_data_for_everyone(web):
     run_id = seed_record(web.db)
     home = web.get("/")
-    assert home.status_code == 200 and run_id in home.text and "hides people" in home.text
+    assert home.status_code == 200 and run_id in home.text and "hidden on this open site" in home.text
+    login(web)                       # having a token changes nothing: there is no fuller view
     page = web.get(f"/runs/{run_id}").text
-    assert "acme.io" in page and "Public view" in page
+    assert "acme.io" in page and "Open view" in page
     for secret in ("Jane Doe", "Mia Sales", "drowning in audits", "Hi Jane", "jane@acme.io"):
         assert secret not in page, secret
     assert "(name hidden)" in page and "CTO" in page
 
 
-def test_operator_report_shows_everything(web):
-    run_id = seed_record(web.db)
-    login(web)
-    page = web.get(f"/runs/{run_id}").text
-    assert "Jane Doe" in page and "drowning in audits" in page and "Hi Jane" in page
+# ---------- open site, same-site guard ----------
+
+def test_no_login_needed_to_open_run_and_review(web):
+    seed_record(web.db)
+    assert web.get("/run").status_code == 200 and web.get("/review").status_code == 200
+    assert web.get("/login").status_code == 404
+    assert "Operator login" not in web.get("/").text and "New run" in web.get("/").text
 
 
-# ---------- auth and CSRF ----------
-
-@pytest.mark.parametrize("method,path", [("get", "/run"), ("get", "/review"), ("post", "/runs"),
-                                         ("post", "/api/runs/x/next"), ("post", "/review/r-acme")])
-def test_operator_routes_need_login(web, method, path):
-    if method == "post":
-        r = web.post(path, data={"domains": "a.io", "action": "approve"})
-    else:
-        r = web.get(path)
-    assert r.status_code == 401
-
-
-def test_wrong_password_rejected(web):
-    r = web.post("/login", data={"password": "nope"}, follow_redirects=False)
-    assert r.status_code == 200 and "Wrong password" in r.text and "sprinto_session" not in r.cookies
-
-
-def test_post_without_csrf_is_refused(web):
-    login(web)
+def test_post_without_token_is_refused(web):
+    seed_record(web.db)
+    web.get("/run")                 # cookie set, but the token is not sent
     assert web.post("/runs", data={"domains": "a.io"}).status_code == 403
     assert web.post("/api/runs/x/next").status_code == 403
+    assert web.post("/review/r-acme", data={"action": "approve"}).status_code == 403 and web.sent == []
 
 
-def test_forged_cookie_is_not_a_session(web):
-    web.cookies.set("sprinto_session", "9999999999.abcd.deadbeef")
-    assert web.get("/run").status_code == 401
+def test_token_without_its_cookie_is_refused(web):
+    csrf = login(web)
+    web.cookies.clear()
+    assert web.post("/runs", data={"domains": "a.io", "csrf": csrf}).status_code == 403
 
 
-def test_operator_disabled_without_secrets(web, monkeypatch):
-    monkeypatch.delenv("OPERATOR_PASSWORD")
-    assert web.post("/login", data={"password": PASSWORD}).status_code == 503
-    assert web.get("/run").status_code == 503
-    assert web.get("/").status_code == 200 and "Operator login" not in web.get("/").text
+def test_cross_site_origin_is_refused(web):
+    csrf = login(web)
+    r = web.post("/runs", data={"domains": "a.io", "csrf": csrf}, headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403
+    ok = web.post("/runs", data={"domains": "a.io", "csrf": csrf}, headers={"Origin": "http://testserver"},
+                  follow_redirects=False)
+    assert ok.status_code == 303
 
 
-def test_short_session_secret_disables_operator(web, monkeypatch):
-    monkeypatch.setenv("SESSION_SECRET", "short")
-    assert web.get("/run").status_code == 503
+def test_running_off_on_vercel_without_keys(web, monkeypatch):
+    import sprinto.web as w
+    csrf = login(web)
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("DATABASE_URL", "unused")                    # only can_run is under test here
+    for k in ("GEMINI_API_KEY", "HUNTER_API_KEY", "RESEND_API_KEY", "MY_EMAIL"):
+        monkeypatch.delenv(k, raising=False)
+    assert w.can_run() is False
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as e:
+        w.check_post(object(), csrf)
+    assert e.value.status_code == 503
 
 
 # ---------- runs ----------
@@ -155,7 +152,7 @@ def test_run_loop_one_company_per_request(web):
     assert second["domain"] == "b.io" and second["status"] == "failed" and second["reason"] == "blocked"
     assert web.post(f"/api/runs/{run_id}/next", headers=h).json() == {"done": True, "busy": False}
     report = web.get(f"/runs/{run_id}").text
-    assert "Run totals" in report and "Bob Tech" in report       # operator view
+    assert "Run totals" in report and "Bob Tech" not in report and "bob@acme.io" not in report
 
 
 def test_run_caps_domains_and_allows_one_active_batch(web):
@@ -166,6 +163,24 @@ def test_run_caps_domains_and_allows_one_active_batch(web):
     first = web.post("/runs", data={"domains": "acme.io", "csrf": csrf}, follow_redirects=False)
     second = web.post("/runs", data={"domains": "b.io", "csrf": csrf}, follow_redirects=False)
     assert second.headers["location"] == first.headers["location"]          # sent back to the active run
+
+
+def test_daily_company_cap_is_shared_and_counts_admitted_companies(web, monkeypatch):
+    import sprinto.web as w
+    monkeypatch.setattr(w, "DAILY_COMPANY_CAP", 3)
+    csrf = login(web)
+    r = web.post("/runs", data={"domains": "a1.io,a2.io", "csrf": csrf}, follow_redirects=False)
+    run_id = r.headers["location"].split("/")[2]
+    from sprinto.store import Store
+    s = Store(web.db)
+    for d in ("a1.io", "a2.io"):           # finish the batch so it is no longer the active one
+        s.claim_next_item(run_id); s.finish_item(run_id, d, None)
+    s.close()
+    assert "2 / 3 companies today" in web.get("/run").text
+    over = web.post("/runs", data={"domains": "b1.io,b2.io", "csrf": csrf})
+    assert over.status_code == 429 and "1 left right now" in over.text
+    ok = web.post("/runs", data={"domains": "b1.io", "csrf": csrf}, follow_redirects=False)
+    assert ok.status_code == 303
 
 
 def test_recently_researched_domain_is_skipped_unless_forced(web):
@@ -206,10 +221,30 @@ def test_review_reject_and_outcome(web):
     assert "Rejected acme.io: wrong_person" in r.text
 
 
-def test_review_without_csrf_refused(web):
+def test_review_masks_names_and_edit_fills_them_back(web):
     seed_record(web.db)
-    login(web)
-    assert web.post("/review/r-acme", data={"action": "approve"}).status_code == 403 and web.sent == []
+    csrf = login(web)
+    page = web.get("/review").text
+    for secret in ("Jane", "Doe", "jane@acme.io", "Mia Sales", "drowning in audits"):
+        assert secret not in page, secret
+    assert "[first name]" in page
+    body = re.search(r'<textarea id="body-r-acme" name="body" rows="11">(.*?)</textarea>', page, re.S).group(1)
+    import html
+    r = web.post("/review/r-acme", data={"action": "edit", "csrf": csrf, "subject": "hello there",
+                                          "body": html.unescape(body), "reason_code": "wrong_tone"},
+                 follow_redirects=True)
+    assert "Edited and sent acme.io" in r.text, r.text[:2000]
+    assert web.sent[0]["to"] == [ME] and "Jane" in web.sent[0]["text"] and "[first name]" not in web.sent[0]["text"]
+
+
+def test_mask_and_unmask_roundtrip():
+    from sprinto.web import mask_people, unmask_people
+    rec = DecisionRecord(record_id="r", run_id="x", config_version=1, domain="acme.io", status=Status.drafted,
+                         contact=Contact(name="Jane Doe", title="CTO", email="jane@acme.io"))
+    text = "Hi Jane, Doe here; write to jane@acme.io. Janet is someone else."
+    m = mask_people(text, rec)
+    assert m == "Hi [first name], [last name] here; write to [email]. Janet is someone else."
+    assert unmask_people(m, rec) == text
 
 
 def test_hunter_usage_shown_on_run_page(web):
@@ -232,7 +267,7 @@ def test_dashboard_renders_tiles_bar_and_runs(web):
     page = web.get("/").text
     assert "Companies researched" in page and "Outcome mix" in page and run_id in page
     assert 'class="seg c-good"' in page and "Drafted or sent: 1 of 1 (100%)" in page
-    assert "Log in to start a run" in page
+    assert "New run" in page and "Log in" not in page
 
 
 def test_report_has_filter_chips_and_status_pills(web):

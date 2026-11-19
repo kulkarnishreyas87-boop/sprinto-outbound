@@ -35,16 +35,14 @@
       compliance buying moment, matched to the right person, and given an email that a human approves.</p>
   </div>
   <div class="row">
-    {% if operator %}
+    {% if can_run %}
       <a class="btn" href="/run">＋ New run</a><a class="btn ghost" href="/review">Review queue</a>
-    {% elif s.operator %}
-      <a class="btn" href="/login">Log in to start a run</a>
     {% endif %}
   </div>
 </section>
 
-{% if not s.operator %}<div class="msg">Running is switched off on this deployment: the owner still needs to add the API keys and operator password.</div>{% endif %}
-{% if s.active_run and operator %}<div class="msg">A run is in progress. <a href="/runs/{{ s.active_run }}/live">Open it</a> to keep it going.</div>{% endif %}
+{% if not can_run %}<div class="msg">Running is switched off on this deployment: the owner still needs to add the API keys.</div>{% endif %}
+{% if s.active_run and can_run %}<div class="msg">A run is in progress. <a href="/runs/{{ s.active_run }}/live">Open it</a> to keep it going.</div>{% endif %}
 
 <div class="row" style="justify-content:space-between;margin:6px 0 10px">
   <h2 style="margin:0">Overview</h2>
@@ -80,8 +78,8 @@
     <strong>System</strong>
     <div class="status-list" style="margin-top:12px">
       <div><span class="muted">Database</span><span class="pill st-done"><span class="ic">✓</span>{{ s.database }}</span></div>
-      <div><span class="muted">Operator access</span>
-        {% if s.operator %}<span class="pill st-done"><span class="ic">✓</span>On</span>{% else %}<span class="pill st-needs_review"><span class="ic">!</span>Off</span>{% endif %}</div>
+      <div><span class="muted">Running</span>
+        {% if s.can_run %}<span class="pill st-done"><span class="ic">✓</span>On</span>{% else %}<span class="pill st-needs_review"><span class="ic">!</span>Off</span>{% endif %}</div>
       <div><span class="muted">Active config</span><span class="tag">v{{ s.config }}</span></div>
       <div><span class="muted">Total spend</span><span class="num" data-k="usd_total">${{ "%.3f"|format(s.usd_total) }}</span></div>
     </div>
@@ -90,7 +88,7 @@
 
 <div class="row" style="justify-content:space-between;align-items:baseline">
   <h2>Recent runs</h2>
-  {% if not operator %}<span class="muted" style="font-size:13px">Public view hides people's names, pain hypotheses and email bodies.</span>{% endif %}
+  <span class="muted" style="font-size:13px">People's names, emails and pain hypotheses are hidden on this open site.</span>
 </div>
 <div class="card" style="padding:8px 6px" id="runs-card">
   {% if s.runs %}
@@ -110,7 +108,7 @@
   </table></div>
   {% else %}
   <div class="empty"><strong>No runs yet</strong>
-    <p class="muted" style="margin:6px 0 0">{% if operator %}Start one with up to 15 company domains.{% else %}Runs appear here as soon as the operator starts one.{% endif %}</p></div>
+    <p class="muted" style="margin:6px 0 0">Start one with up to 15 company domains.</p></div>
   {% endif %}
 </div>
 

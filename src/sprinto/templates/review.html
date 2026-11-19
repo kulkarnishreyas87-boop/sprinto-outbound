@@ -1,15 +1,28 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 {% block title %}Review · Sprinto Outbound{% endblock %}
+{% block head %}
+<style>
+  .co { border-left:3px solid var(--line); }
+  .co.st-b-drafted { border-left-color:var(--good); } .co.st-b-needs_review { border-left-color:var(--warn); }
+  .co .head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+  .co .domain { font-weight:650; font-size:15.5px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:10px; } @media (max-width:640px) { .two { grid-template-columns:1fr; } }
+  .outcome { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+</style>
+{% endblock %}
 {% block body %}
+<p class="eyebrow"><a href="/">Dashboard</a> / Review</p>
 <h1>Review queue</h1>
-<p class="muted">Ordered by tier, then strength of evidence. Approving sends the email to MY_EMAIL only: the prospect never receives it.</p>
-{% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
+<p class="lead">Ordered by tier, then strength of evidence. Approving sends the email to <b>your own inbox only</b>: the prospect never receives it.</p>
+{% if msg %}<div class="msg fade-in">{{ msg }}</div>{% endif %}
+
 {% for it in items %}{% set r = it.rec %}
-<div class="card">
-  <div class="row"><strong>{{ r.domain }}</strong>
-    <span class="badge s-{{ r.status.value }}">{{ r.status.value }}</span>
-    {% if r.tier %}<span class="badge">tier {{ r.tier }}</span>{% endif %}
-    {% if r.reason_code and r.status.value != "drafted" %}<span class="muted">{{ r.reason_code }}</span>{% endif %}</div>
+<div class="card co st-b-{{ r.status.value }} fade-in">
+  <div class="head"><span class="domain">{{ r.domain }}</span>{{ ui.pill(r.status.value) }}
+    {% if r.tier %}<span class="tag">Tier {{ r.tier }}</span>{% endif %}
+    {% if r.reason_code and r.status.value != "drafted" %}<span class="muted" style="font-size:13.5px">{{ r.reason_code }}</span>{% endif %}</div>
   <details><summary>Evidence and reasoning</summary><pre>{{ it.text }}</pre></details>
 
   {% if r.status.value == "drafted" %}
@@ -17,52 +30,51 @@
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label for="subj-{{ r.record_id }}">Subject</label>
     <input id="subj-{{ r.record_id }}" name="subject" value="{{ it.subject }}" style="width:100%">
-    <label for="body-{{ r.record_id }}">Email (edit here if needed)</label>
-    <textarea id="body-{{ r.record_id }}" name="body" rows="12">{{ it.body }}</textarea>
-    <div class="row">
-      <label>Reason (needed to edit or reject)
-        <select name="reason_code"><option value="">-</option>{% for c in reasons %}<option>{{ c }}</option>{% endfor %}</select></label>
-      <label><input type="checkbox" name="hook_or_pain_changed" value="1"> I changed the hook or the pain</label>
+    <label for="body-{{ r.record_id }}">Email</label>
+    <textarea id="body-{{ r.record_id }}" name="body" rows="11">{{ it.body }}</textarea>
+    <div class="two">
+      <div><label>Reason (needed to edit or reject)</label>
+        <select name="reason_code" style="width:100%"><option value="">Choose a reason</option>{% for c in reasons %}<option value="{{ c }}">{{ c.replace("_", " ") }}</option>{% endfor %}</select></div>
+      <div><label for="note-{{ r.record_id }}">Note (optional)</label><input id="note-{{ r.record_id }}" name="note" style="width:100%"></div>
     </div>
-    <label for="note-{{ r.record_id }}">Note (optional)</label>
-    <input id="note-{{ r.record_id }}" name="note" style="width:100%">
-    <p class="row">
-      <button name="action" value="approve" type="submit">Approve &amp; send as drafted</button>
+    <label style="font-weight:400"><input type="checkbox" name="hook_or_pain_changed" value="1"> I changed the hook or the pain</label>
+    <div class="actions">
+      <button name="action" value="approve" type="submit">✓ Approve &amp; send as drafted</button>
       <button name="action" value="edit" type="submit" class="ghost">Send my edited version</button>
       <button name="action" value="reject" type="submit" class="danger">Reject</button>
-    </p>
+    </div>
   </form>
   {% else %}
   <form method="post" action="/review/{{ r.record_id }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <div class="row">
-      <label>Reason (optional, for drop)
-        <select name="reason_code"><option value="">-</option>{% for c in reasons %}<option>{{ c }}</option>{% endfor %}</select></label>
+    <div class="two">
+      <div><label>Reason (optional, for drop)</label>
+        <select name="reason_code" style="width:100%"><option value="">Choose a reason</option>{% for c in reasons %}<option value="{{ c }}">{{ c.replace("_", " ") }}</option>{% endfor %}</select></div>
+      <div><label for="vnote-{{ r.record_id }}">Note</label><input id="vnote-{{ r.record_id }}" name="note" style="width:100%"></div>
     </div>
-    <label for="vnote-{{ r.record_id }}">Note</label>
-    <input id="vnote-{{ r.record_id }}" name="note" style="width:100%">
-    <p class="row">
+    <div class="actions">
       <button name="action" value="qualify" type="submit">Qualify{% if r.reason_code == "tier_c" %} &amp; continue to draft{% endif %}</button>
       <button name="action" value="needs_more_info" type="submit" class="ghost">Needs more info</button>
       <button name="action" value="drop" type="submit" class="danger">Drop</button>
-    </p>
+    </div>
   </form>
   {% endif %}
 </div>
 {% else %}
-<div class="card">Nothing waiting for review.</div>
+<div class="card" style="text-align:center;padding:36px"><strong>Nothing waiting for review</strong>
+  <p class="muted" style="margin:6px 0 0">New drafts and flagged companies appear here after a run.</p></div>
 {% endfor %}
 
-<h2>Sent: record outcomes</h2>
+<h2>Sent · record outcomes</h2>
 {% for r in sent %}
-<form method="post" action="/review/{{ r.record_id }}" class="card row">
+<form method="post" action="/review/{{ r.record_id }}" class="card outcome">
   <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="outcome">
-  <strong>{{ r.domain }}</strong>
-  <select name="replied" aria-label="Reply"><option value="">reply: -</option><option>positive</option><option>neutral</option><option>negative</option></select>
-  <select name="meeting" aria-label="Meeting"><option value="">meeting: -</option><option>yes</option><option>no</option></select>
-  <select name="bounced" aria-label="Bounced"><option value="">bounced: -</option><option>yes</option><option>no</option></select>
-  <button type="submit" class="ghost">Save outcome</button>
-  {% if r.outcome.recorded_at %}<span class="muted">saved: replied={{ r.outcome.replied or "-" }}, meeting={{ r.outcome.meeting }}</span>{% endif %}
+  <strong style="margin-right:auto">{{ r.domain }}</strong>
+  <select name="replied" aria-label="Reply"><option value="">Reply: -</option><option>positive</option><option>neutral</option><option>negative</option></select>
+  <select name="meeting" aria-label="Meeting"><option value="">Meeting: -</option><option>yes</option><option>no</option></select>
+  <select name="bounced" aria-label="Bounced"><option value="">Bounced: -</option><option>yes</option><option>no</option></select>
+  <button type="submit" class="ghost">Save</button>
+  {% if r.outcome.recorded_at %}<span class="pill st-done"><span class="ic">✓</span>replied {{ r.outcome.replied or "-" }}</span>{% endif %}
 </form>
 {% else %}
 <div class="card muted">Nothing sent yet.</div>

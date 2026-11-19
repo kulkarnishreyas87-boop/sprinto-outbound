@@ -1,0 +1,28 @@
+{# Shared UI pieces. Status is always icon + word + colour, never colour alone. #}
+{% set STATUS = {
+  "sent": ("✓", "Sent"), "drafted": ("✓", "Drafted"), "done": ("✓", "Done"),
+  "needs_review": ("!", "Needs review"), "dropped": ("–", "Dropped"), "skipped": ("–", "Skipped"),
+  "failed": ("✕", "Failed"), "pending": ("○", "Queued"), "running": ("◌", "Running")} %}
+
+{% macro pill(status) -%}
+  {%- set s = STATUS.get(status, ("•", status)) -%}
+  <span class="pill st-{{ status }}"><span class="ic" aria-hidden="true">{{ s[0] }}</span>{{ s[1] }}</span>
+{%- endmacro %}
+
+{# outcome mix: drafted+sent (good), needs_review (warn), dropped (neutral), failed (crit) #}
+{% macro outcome_bar(counts, size="") -%}
+  {%- set good = (counts.get("drafted", 0) + counts.get("sent", 0)) -%}
+  {%- set parts = [("good", good, "Drafted or sent"), ("warn", counts.get("needs_review", 0), "Needs review"),
+                   ("neutral", counts.get("dropped", 0), "Dropped"), ("crit", counts.get("failed", 0), "Failed")] -%}
+  {%- set total = parts | sum(attribute=1) -%}
+  <div class="bar {{ size }}" role="img" aria-label="{% for p in parts if p[1] %}{{ p[2] }} {{ p[1] }}{{ ', ' if not loop.last }}{% endfor %}">
+    {%- for key, n, label in parts if n -%}
+      <span class="seg c-{{ key }}" style="flex-grow:{{ n }}" data-tip="{{ label }}: {{ n }} of {{ total }} ({{ (100 * n / total) | round | int }}%)"></span>
+    {%- endfor -%}
+  </div>
+{%- endmacro %}
+
+{% macro legend() -%}
+  <div class="legend"><span><i class="c-good"></i>Drafted or sent</span><span><i class="c-warn"></i>Needs review</span>
+    <span><i class="c-neutral"></i>Dropped</span><span><i class="c-crit"></i>Failed</span></div>
+{%- endmacro %}

@@ -1,23 +1,83 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 {% block title %}Run {{ run_id }} · Sprinto Outbound{% endblock %}
+{% block head %}
+<style>
+  .co { border-left:3px solid var(--line); }
+  .co.st-b-drafted,.co.st-b-sent { border-left-color:var(--good); } .co.st-b-needs_review { border-left-color:var(--warn); }
+  .co.st-b-dropped { border-left-color:var(--neutral); } .co.st-b-failed { border-left-color:var(--crit); }
+  .co .head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .co .domain { font-weight:650; font-size:15.5px; margin-right:4px; }
+  .co .reason { color:var(--text-2); font-size:13.5px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { font:inherit; font-size:13px; padding:5px 11px; border-radius:999px; border:1px solid var(--line); background:var(--surface);
+          color:var(--text-2); cursor:pointer; box-shadow:none; }
+  .chip:hover { transform:none; box-shadow:none; background:var(--track); }
+  .chip.on { background:var(--text); color:var(--plane); border-color:var(--text); }
+  .toolbar { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center; margin:18px 0 12px; }
+</style>
+{% endblock %}
 {% block body %}
-<h1>Run {{ run_id }}</h1>
-<p class="muted">Config v{{ version }}.
+<p class="eyebrow"><a href="/">Dashboard</a> / Run</p>
+<h1 class="num" style="font-size:1.6rem">{{ run_id }}</h1>
+<p class="muted" style="margin:0">Config v{{ version }} ·
   {% if public %}Public view: people's names, pains, email bodies and review notes are hidden.{% else %}Operator view: full detail.{% endif %}</p>
+
 {% set pending = items | selectattr("state", "in", ["pending", "running"]) | list %}
 {% if pending %}<div class="msg">{{ pending|length }} compan{{ "y" if pending|length == 1 else "ies" }} still to process.
   {% if not public %}<a href="/runs/{{ run_id }}/live">Continue the run</a>{% endif %}</div>{% endif %}
-{% for s in items if s.state == "skipped" %}<div class="card muted">{{ s.domain }}: skipped ({{ s.note }})</div>{% endfor %}
+
+{% if blocks %}
+{% set counts = {} %}{% for b in blocks %}{% set _ = counts.update({b.status: counts.get(b.status, 0) + 1}) %}{% endfor %}
+<div class="card" style="margin-top:18px">
+  <div class="row" style="justify-content:space-between"><strong>Outcomes</strong><span class="muted num">{{ blocks|length }} companies</span></div>
+  <div style="margin-top:12px">{{ ui.outcome_bar(counts, "lg") }}</div>{{ ui.legend() }}
+</div>
+
+<div class="toolbar">
+  <div class="chips" role="group" aria-label="Filter by outcome">
+    <button class="chip on" data-f="all">All {{ blocks|length }}</button>
+    {% for st in ["drafted", "sent", "needs_review", "dropped", "failed"] if counts.get(st) %}
+      <button class="chip" data-f="{{ st }}">{{ ui.STATUS[st][1] }} {{ counts[st] }}</button>
+    {% endfor %}
+  </div>
+  <input type="search" id="q" placeholder="Search domains" aria-label="Search domains" style="width:220px">
+</div>
+{% endif %}
+
+{% for s in items if s.state == "skipped" %}<div class="card co"><div class="head"><span class="domain">{{ s.domain }}</span>{{ ui.pill("skipped") }}<span class="reason">{{ s.note }}</span></div></div>{% endfor %}
+
+<div id="list">
 {% for b in blocks %}
-<div class="card">
-  <div class="row"><strong>{{ b.domain }}</strong>
-    <span class="badge s-{{ b.status }}">{{ b.status }}</span>
-    {% if b.tier %}<span class="badge">tier {{ b.tier }}</span>{% endif %}
-    {% if b.reason and b.status != "drafted" %}<span class="muted">{{ b.reason }}</span>{% endif %}</div>
-  <details {% if loop.length <= 3 %}open{% endif %}><summary>Why</summary><pre>{{ b.text }}</pre></details>
+<div class="card co st-b-{{ b.status }} fade-in" data-status="{{ b.status }}" data-domain="{{ b.domain }}">
+  <div class="head">
+    <span class="domain">{{ b.domain }}</span>{{ ui.pill(b.status) }}
+    {% if b.tier %}<span class="tag">Tier {{ b.tier }}</span>{% endif %}
+    {% if b.reason and b.status != "drafted" %}<span class="reason">{{ b.reason }}</span>{% endif %}
+  </div>
+  <details {% if loop.length <= 2 %}open{% endif %} style="margin-top:10px"><summary>Why this decision</summary><pre>{{ b.text }}</pre></details>
 </div>
 {% else %}
-<div class="card">No companies finished in this run yet.</div>
+<div class="card empty" style="text-align:center;padding:32px;margin-top:18px">No companies finished in this run yet.</div>
 {% endfor %}
-{% if blocks %}<pre>{{ totals }}</pre>{% endif %}
+</div>
+{% if blocks %}<details style="margin-top:18px"><summary>Run totals</summary><pre>{{ totals }}</pre></details>{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  let f = "all";
+  const q = document.getElementById("q");
+  function apply() {
+    const term = (q?.value || "").trim().toLowerCase();
+    document.querySelectorAll("#list [data-status]").forEach(el => {
+      el.hidden = !((f === "all" || el.dataset.status === f) && el.dataset.domain.includes(term));
+    });
+  }
+  document.querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => {
+    document.querySelectorAll(".chip").forEach(x => x.classList.remove("on")); c.classList.add("on"); f = c.dataset.f; apply();
+  }));
+  q?.addEventListener("input", apply);
+})();
+</script>
 {% endblock %}

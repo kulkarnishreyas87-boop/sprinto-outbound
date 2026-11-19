@@ -214,7 +214,31 @@ def test_review_without_csrf_refused(web):
 
 def test_hunter_usage_shown_on_run_page(web):
     login(web)
-    assert "0 of 20 searches used" in web.get("/run").text
+    assert "Hunter 0 / 20 this month" in web.get("/run").text
+
+
+def test_summary_api_is_counts_only(web):
+    run_id = seed_record(web.db)
+    s = web.get("/api/summary").json()
+    assert s["companies"] == 1 and s["drafted"] == 1 and s["runs"][0]["run_id"] == run_id
+    assert s["runs"][0]["counts"] == {"drafted": 1} and s["hunter_cap"] == 20
+    raw = web.get("/api/summary").text
+    for secret in ("Jane", "Mia", "jane@acme.io", "drowning", "Hi Jane"):
+        assert secret not in raw, secret
+
+
+def test_dashboard_renders_tiles_bar_and_runs(web):
+    run_id = seed_record(web.db)
+    page = web.get("/").text
+    assert "Companies researched" in page and "Outcome mix" in page and run_id in page
+    assert 'class="seg c-good"' in page and "Drafted or sent: 1 of 1 (100%)" in page
+    assert "Log in to start a run" in page
+
+
+def test_report_has_filter_chips_and_status_pills(web):
+    run_id = seed_record(web.db)
+    page = web.get(f"/runs/{run_id}").text
+    assert 'data-f="drafted"' in page and "pill st-drafted" in page and 'id="q"' in page
 
 
 def test_vercel_without_database_shows_setup_page_not_500(web, monkeypatch):

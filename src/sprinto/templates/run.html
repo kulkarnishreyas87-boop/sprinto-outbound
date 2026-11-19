@@ -1,20 +1,44 @@
 {% extends "base.html" %}
 {% block title %}New run · Sprinto Outbound{% endblock %}
 {% block body %}
-<h1>New run</h1>
+<p class="eyebrow"><a href="/">Dashboard</a> / New run</p>
+<h1>Start a run</h1>
+<p class="lead">Paste company domains, one per line. Every company is researched, qualified and either dropped, flagged or drafted.
+  Nothing is sent from a run: drafts wait in Review.</p>
 {% if active %}<div class="msg">A run is already in progress: <a href="/runs/{{ active }}/live">finish it first</a>.</div>{% endif %}
 {% if error %}<div class="err">{{ error }}</div>{% endif %}
-<div class="card">
-  <span class="badge">Hunter: {{ hunter_used }} of {{ hunter_cap }} searches used (30 days)</span>
-  <span class="badge">Approved claims: {{ approved_claims }}</span>
-  {% if approved_claims == 0 %}<p class="err">No approved claims: companies will be qualified, but nothing will be drafted and Hunter won't be called.</p>{% endif %}
+
+<div class="row" style="margin-bottom:12px">
+  {% set pct = (100 * hunter_used / hunter_cap) if hunter_cap else 0 %}
+  <span class="pill {{ 'st-failed' if pct >= 100 else ('st-needs_review' if pct >= 75 else 'st-done') }}"><span class="ic">●</span>Hunter {{ hunter_used }} / {{ hunter_cap }} this month</span>
+  {% if approved_claims %}<span class="pill st-done"><span class="ic">✓</span>{{ approved_claims }} approved claim{{ "s" if approved_claims != 1 }}</span>
+  {% else %}<span class="pill st-needs_review"><span class="ic">!</span>No approved claims: nothing will be drafted</span>{% endif %}
 </div>
-<form method="post" action="/runs" class="card">
+
+<form method="post" action="/runs" class="card" id="runform">
   <input type="hidden" name="csrf" value="{{ csrf }}">
-  <label for="domains">Company domains (one per line, up to {{ max_domains }})</label>
+  <div class="row" style="justify-content:space-between"><label for="domains" style="margin-top:0">Company domains</label>
+    <span class="muted num" id="dcount">0 / {{ max_domains }}</span></div>
   <textarea id="domains" name="domains" rows="8" placeholder="acme.io&#10;https://www.example.com/pricing" required></textarea>
-  <label><input type="checkbox" name="force" value="1"> Re-research domains done in the last 30 days</label>
-  <p class="muted">Each company takes about 15–70 seconds. Nothing is ever sent from a run: drafts wait in Review.</p>
-  <button type="submit" {% if active %}disabled{% endif %}>Start run</button>
+  <label style="font-weight:400"><input type="checkbox" name="force" value="1"> Re-research domains done in the last 30 days</label>
+  <div class="row" style="justify-content:space-between;margin-top:10px">
+    <span class="muted" style="font-size:13px">About 15–70 seconds per company · Hunter is only used for tier A/B companies</span>
+    <button type="submit" id="go" {% if active %}disabled{% endif %}>Start run →</button>
+  </div>
 </form>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const ta = document.getElementById("domains"), out = document.getElementById("dcount"), go = document.getElementById("go"), max = {{ max_domains }};
+  function count() {
+    const ds = new Set(ta.value.replace(/,/g, "\n").split("\n").map(s => s.trim().toLowerCase()
+      .replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[\/?#]/)[0]).filter(s => s.includes(".") && !s.startsWith("#")));
+    out.textContent = ds.size + " / " + max;
+    out.style.color = ds.size > max ? "var(--crit-text)" : "";
+    if (!{{ "true" if active else "false" }}) go.disabled = ds.size === 0 || ds.size > max;
+  }
+  ta.addEventListener("input", count); count();
+})();
+</script>
 {% endblock %}

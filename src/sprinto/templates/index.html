@@ -1,85 +1,174 @@
 {% extends "base.html" %}
-{% block body %}
+{% import "_ui.html" as ui %}
+{% block head %}
 <style>
-  .hero { padding: 8px 0 4px; }
-  .hero h1 { font-size: clamp(1.7rem, 4vw, 2.3rem); line-height: 1.2; margin: 0 0 10px; }
-  .lead { font-size: 1.05rem; color: var(--muted); max-width: 48rem; margin: 0 0 18px; }
-  .cta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 6px 0 8px; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 22px 0 6px; }
-  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
-  .stat b { display: block; font-size: 1.35rem; }
-  .stat span { color: var(--muted); font-size: .85rem; }
-  .ok { color: var(--ok); } .off { color: var(--warn); }
-  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
-  .step { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
-  .step code { color: var(--accent); background: none; font-weight: 700; }
-  .step p { margin: 4px 0 0; color: var(--muted); font-size: .9rem; }
-  .empty { text-align: center; padding: 28px 16px; }
+  .hero { display:flex; justify-content:space-between; gap:24px; align-items:flex-end; flex-wrap:wrap; margin-bottom:22px; }
+  .hero .lead { margin-bottom:0; }
+  .tile { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; box-shadow:var(--shadow);
+          position:relative; overflow:hidden; }
+  .tile::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--k, var(--line)); }
+  .tile .v { font-size:1.6rem; font-weight:650; letter-spacing:-.02em; line-height:1.15; }
+  .tile .k { color:var(--muted); font-size:12.5px; margin-top:2px; }
+  .tile .sub { color:var(--text-2); font-size:12.5px; margin-top:6px; }
+  .meter { height:6px; border-radius:3px; background:var(--track); overflow:hidden; margin-top:8px; }
+  .meter > span { display:block; height:100%; border-radius:3px; background:var(--accent); transition:width .5s ease; }
+  .meter.hot > span { background:var(--warn); } .meter.full > span { background:var(--crit); }
+  .split { display:grid; grid-template-columns:1.4fr 1fr; gap:10px; margin-top:10px; }
+  @media (max-width:760px) { .split { grid-template-columns:1fr; } }
+  .status-list { display:grid; gap:10px; font-size:14px; }
+  .status-list div { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; }
+  .step { padding:14px 16px; } .step b { display:flex; align-items:center; gap:8px; font-size:14px; }
+  .step b span { width:22px; height:22px; border-radius:7px; display:grid; place-items:center; font-size:12px; background:var(--accent-soft); color:var(--accent); }
+  .step p { margin:6px 0 0; color:var(--text-2); font-size:13.5px; }
+  .runs td .bar { min-width:140px; }
+  .empty { text-align:center; padding:36px 16px; }
+  .updated { font-size:12.5px; color:var(--muted); display:inline-flex; align-items:center; gap:8px; }
 </style>
-
-<section class="hero">
-  <p class="muted" style="margin:0 0 6px">Sprinto · outbound research and drafting</p>
-  <h1>From a list of domains to evidence-backed outreach</h1>
-  <p class="lead">For each company, the pipeline reads its website and checks every fact against a verbatim quote. It
-    qualifies the company on its compliance buying moment, picks the right person, and drafts an email a human
-    approves. Dropping or flagging a company is a correct outcome, not an error.</p>
-  <div class="cta">
+{% endblock %}
+{% block body %}
+<section class="hero fade-in">
+  <div>
+    <p class="eyebrow">Sprinto · outbound research and drafting</p>
+    <h1>From a list of domains to evidence‑backed outreach</h1>
+    <p class="lead">Each company's website is read and every fact is checked against a quote. The company is qualified on its
+      compliance buying moment, matched to the right person, and given an email that a human approves.</p>
+  </div>
+  <div class="row">
     {% if operator %}
-      <a class="btn" href="/run">Start a run</a>
-      <a class="btn" style="background:transparent;color:var(--accent)" href="/review">Open the review queue</a>
-    {% elif status.operator %}
+      <a class="btn" href="/run">＋ New run</a><a class="btn ghost" href="/review">Review queue</a>
+    {% elif s.operator %}
       <a class="btn" href="/login">Log in to start a run</a>
-    {% else %}
-      <span class="badge off">Running is switched off on this deployment</span>
-      <span class="muted">The owner still needs to add the API keys and operator password in Vercel.</span>
     {% endif %}
-    <a href="https://github.com/kulkarnishreyas87-boop/sprinto-outbound">Source code</a>
   </div>
 </section>
 
-<div class="stats">
-  <div class="stat"><b class="ok">● {{ status.database }}</b><span>database</span></div>
-  <div class="stat"><b class="{{ 'ok' if status.operator else 'off' }}">● {{ "On" if status.operator else "Off" }}</b><span>operator access</span></div>
-  <div class="stat"><b>{{ status.runs }}</b><span>runs</span></div>
-  <div class="stat"><b>{{ status.companies }}</b><span>companies researched</span></div>
-  <div class="stat"><b>{{ status.drafted }}</b><span>emails drafted or sent</span></div>
-  <div class="stat"><b>v{{ status.config }}</b><span>active config</span></div>
+{% if not s.operator %}<div class="msg">Running is switched off on this deployment: the owner still needs to add the API keys and operator password.</div>{% endif %}
+{% if s.active_run and operator %}<div class="msg">A run is in progress. <a href="/runs/{{ s.active_run }}/live">Open it</a> to keep it going.</div>{% endif %}
+
+<div class="row" style="justify-content:space-between;margin:6px 0 10px">
+  <h2 style="margin:0">Overview</h2>
+  <span class="updated"><span class="live-dot" aria-hidden="true"></span><span id="updated">Live · updated just now</span></span>
 </div>
 
-{% if active and operator %}<div class="msg">A run is in progress: <a href="/runs/{{ active }}/live">open it</a> to keep it going.</div>{% endif %}
-
-<h2>Runs</h2>
-{% if runs %}
-<p class="muted">{% if not operator %}This public view hides people's names, pain hypotheses and email bodies.{% endif %}</p>
-<div class="wrap"><table>
-  <thead><tr><th>Run</th><th>Started (UTC)</th><th>Companies</th><th>Outcomes</th><th>Cost</th></tr></thead>
-  <tbody>
-  {% for r in runs %}
-  <tr>
-    <td><a href="/runs/{{ r.run_id }}">{{ r.run_id }}</a><br><span class="muted">config v{{ r.version }}</span></td>
-    <td>{{ r.started }}</td>
-    <td>{{ r.n }}</td>
-    <td>{% for k, v in r.counts.items() %}<span class="badge s-{{ k }}">{{ k }} {{ v }}</span> {% endfor %}</td>
-    <td>${{ "%.3f"|format(r.usd) }}</td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table></div>
-{% else %}
-<div class="card empty">
-  <strong>No runs yet.</strong>
-  <p class="muted" style="margin:6px 0 0">{% if operator %}Start one with up to 15 company domains. Each company takes about 15–70 seconds.
-    {% else %}Runs appear here as soon as the operator starts one.{% endif %}</p>
+<div class="grid tiles fade-in" id="tiles">
+  <div class="tile" style="--k:var(--accent)"><div class="v num" data-k="companies">{{ s.companies }}</div><div class="k">Companies researched</div>
+    <div class="sub"><span data-k="runs_n">{{ s.runs|length }}</span> runs</div></div>
+  <div class="tile" style="--k:var(--good)"><div class="v num" data-k="drafted">{{ s.drafted }}</div><div class="k">Emails drafted</div>
+    <div class="sub"><span data-k="sent">{{ s.sent }}</span> sent to your inbox</div></div>
+  <div class="tile" style="--k:var(--warn)"><div class="v num" data-k="needs_review">{{ s.needs_review }}</div><div class="k">Need review</div>
+    <div class="sub">flagged for a human</div></div>
+  <div class="tile" style="--k:var(--neutral)"><div class="v num" data-k="dropped">{{ s.dropped }}</div><div class="k">Dropped</div>
+    <div class="sub">not a fit: correct, not an error</div></div>
+  <div class="tile" style="--k:var(--accent)"><div class="v num" data-k="usd_per_company">${{ "%.3f"|format(s.usd_per_company) }}</div><div class="k">Cost per company</div>
+    <div class="sub"><span data-k="secs_per_company">{{ s.secs_per_company }}</span>s per company</div></div>
+  {% set pct = (100 * s.hunter_used / s.hunter_cap) if s.hunter_cap else 0 %}
+  <div class="tile" style="--k:var(--accent)"><div class="v num"><span data-k="hunter_used">{{ s.hunter_used }}</span><span class="muted" style="font-size:1rem"> / {{ s.hunter_cap }}</span></div>
+    <div class="k">Hunter searches (30 days)</div>
+    <div class="meter {{ 'full' if pct >= 100 else ('hot' if pct >= 75) }}" id="hunter-meter"><span style="width:{{ [pct, 100]|min }}%"></span></div></div>
 </div>
-{% endif %}
+
+<div class="split">
+  <div class="card fade-in">
+    <div class="row" style="justify-content:space-between"><strong>Outcome mix</strong><span class="muted num" id="mix-total">{{ s.companies }} companies</span></div>
+    <div style="margin-top:14px" id="mix-bar">
+      {% if s.companies %}{{ ui.outcome_bar(s.totals, "lg") }}{% else %}<div class="bar lg"></div>{% endif %}
+    </div>
+    {{ ui.legend() }}
+  </div>
+  <div class="card fade-in">
+    <strong>System</strong>
+    <div class="status-list" style="margin-top:12px">
+      <div><span class="muted">Database</span><span class="pill st-done"><span class="ic">✓</span>{{ s.database }}</span></div>
+      <div><span class="muted">Operator access</span>
+        {% if s.operator %}<span class="pill st-done"><span class="ic">✓</span>On</span>{% else %}<span class="pill st-needs_review"><span class="ic">!</span>Off</span>{% endif %}</div>
+      <div><span class="muted">Active config</span><span class="tag">v{{ s.config }}</span></div>
+      <div><span class="muted">Total spend</span><span class="num" data-k="usd_total">${{ "%.3f"|format(s.usd_total) }}</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="row" style="justify-content:space-between;align-items:baseline">
+  <h2>Recent runs</h2>
+  {% if not operator %}<span class="muted" style="font-size:13px">Public view hides people's names, pain hypotheses and email bodies.</span>{% endif %}
+</div>
+<div class="card" style="padding:8px 6px" id="runs-card">
+  {% if s.runs %}
+  <div class="wrap"><table class="runs">
+    <thead><tr><th>Run</th><th>Started (UTC)</th><th class="num">Companies</th><th>Outcomes</th><th class="num">Cost</th></tr></thead>
+    <tbody id="runs-body">
+    {% for r in s.runs %}
+      <tr>
+        <td><a href="/runs/{{ r.run_id }}">{{ r.run_id }}</a>{% if r.pending %} <span class="pill st-running"><span class="ic">◌</span>{{ r.pending }} left</span>{% endif %}</td>
+        <td class="num muted">{{ r.started }}</td>
+        <td class="num">{{ r.n }}</td>
+        <td>{% if r.n %}{{ ui.outcome_bar(r.counts) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+        <td class="num">${{ "%.3f"|format(r.usd) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty"><strong>No runs yet</strong>
+    <p class="muted" style="margin:6px 0 0">{% if operator %}Start one with up to 15 company domains.{% else %}Runs appear here as soon as the operator starts one.{% endif %}</p></div>
+  {% endif %}
+</div>
 
 <h2>How each company is decided</h2>
 <div class="steps">
-  <div class="step"><code>1 · Read</code><p>Homepage, then up to 4 more pages (careers, trust, pricing) and public job boards. robots.txt is respected.</p></div>
-  <div class="step"><code>2 · Verify</code><p>Every fact needs a verbatim quote that code finds on the page. A second check rejects quotes that don't back the value.</p></div>
-  <div class="step"><code>3 · Gate</code><p>Consumer brands, agencies, compliance vendors and companies whose trust centre runs on a competitor tool are dropped.</p></div>
-  <div class="step"><code>4 · Qualify</code><p>The model proposes a buying moment and tier. Code can only lower the tier, and stage is never guessed.</p></div>
-  <div class="step"><code>5 · Contact</code><p>Hunter, for tier A and B only. Ranked by role for the moment; sales, marketing and HR are never picked.</p></div>
-  <div class="step"><code>6 · Draft &amp; QA</code><p>Three variants checked in code for numbers, names, frameworks and length. A judge picks the best, and a human approves.</p></div>
+  <div class="card step"><b><span>1</span>Read</b><p>Homepage plus up to 4 pages (careers, trust, pricing) and public job boards. robots.txt is respected.</p></div>
+  <div class="card step"><b><span>2</span>Verify</b><p>Every fact needs a verbatim quote that code finds on the page, then a second check that the quote backs the value.</p></div>
+  <div class="card step"><b><span>3</span>Gate</b><p>Consumer brands, agencies, compliance vendors and competitor-run trust centres are dropped.</p></div>
+  <div class="card step"><b><span>4</span>Qualify</b><p>The model proposes a moment and tier. Code can only lower the tier, and stage is never guessed.</p></div>
+  <div class="card step"><b><span>5</span>Contact</b><p>Hunter, for tier A and B only. Sales, marketing and HR are never picked.</p></div>
+  <div class="card step"><b><span>6</span>Draft &amp; QA</b><p>Three variants checked in code, a judge picks one, and a human approves it.</p></div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const fmt = (n) => "$" + Number(n).toFixed(3);
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  function bar(counts, size) {
+    const parts = [["good", (counts.drafted||0)+(counts.sent||0), "Drafted or sent"], ["warn", counts.needs_review||0, "Needs review"],
+                   ["neutral", counts.dropped||0, "Dropped"], ["crit", counts.failed||0, "Failed"]];
+    const total = parts.reduce((a, p) => a + p[1], 0);
+    if (!total) return '<div class="bar ' + (size||"") + '"></div>';
+    return '<div class="bar ' + (size||"") + '" role="img">' + parts.filter(p => p[1]).map(p =>
+      '<span class="seg c-' + p[0] + '" style="flex-grow:' + p[1] + '" data-tip="' + p[2] + ': ' + p[1] + ' of ' + total +
+      ' (' + Math.round(100*p[1]/total) + '%)"></span>').join("") + '</div>';
+  }
+  let last = Date.now();
+  function apply(s) {
+    const set = (k, v) => document.querySelectorAll('[data-k="' + k + '"]').forEach(el => { if (el.textContent !== String(v)) {
+      el.textContent = v; el.animate?.([{opacity:.3},{opacity:1}], {duration:400}); } });
+    set("companies", s.companies); set("runs_n", s.runs.length); set("drafted", s.drafted); set("sent", s.sent);
+    set("needs_review", s.needs_review); set("dropped", s.dropped); set("usd_per_company", fmt(s.usd_per_company));
+    set("secs_per_company", s.secs_per_company); set("hunter_used", s.hunter_used); set("usd_total", fmt(s.usd_total));
+    const pct = s.hunter_cap ? Math.min(100, 100 * s.hunter_used / s.hunter_cap) : 0;
+    const m = document.getElementById("hunter-meter");
+    if (m) { m.className = "meter" + (pct >= 100 ? " full" : pct >= 75 ? " hot" : ""); m.firstElementChild.style.width = pct + "%"; }
+    document.getElementById("mix-bar").innerHTML = bar(s.totals, "lg");
+    document.getElementById("mix-total").textContent = s.companies + " companies";
+    const body = document.getElementById("runs-body");
+    if (body) body.innerHTML = s.runs.map(r => '<tr><td><a href="/runs/' + esc(r.run_id) + '">' + esc(r.run_id) + '</a>' +
+      (r.pending ? ' <span class="pill st-running"><span class="ic">◌</span>' + r.pending + ' left</span>' : '') +
+      '</td><td class="num muted">' + esc(r.started) + '</td><td class="num">' + r.n + '</td><td>' +
+      (r.n ? bar(r.counts) : '<span class="muted">-</span>') + '</td><td class="num">' + fmt(r.usd) + '</td></tr>').join("");
+    else if (s.runs.length) location.reload();   // first run appeared: switch from the empty state
+    last = Date.now();
+  }
+  async function refresh() {
+    if (document.hidden) return;
+    try { const r = await fetch("/api/summary", {cache: "no-store"}); if (r.ok) apply(await r.json()); } catch (e) {}
+  }
+  setInterval(refresh, 20000);
+  setInterval(() => {
+    const s = Math.round((Date.now() - last) / 1000);
+    document.getElementById("updated").textContent = "Live · updated " + (s < 5 ? "just now" : s + "s ago");
+  }, 1000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+})();
+</script>
 {% endblock %}

@@ -1,48 +1,91 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 {% block title %}Running {{ run_id }} · Sprinto Outbound{% endblock %}
+{% block head %}
+<style>
+  .progress { height:8px; border-radius:4px; background:var(--track); overflow:hidden; margin:14px 0 8px; }
+  .progress > span { display:block; height:100%; width:0; background:linear-gradient(90deg,var(--accent),#1baf7a); border-radius:4px; transition:width .6s ease; }
+  .timer { color:var(--muted); font-size:13px; }
+  tr.running td:first-child { font-weight:600; }
+</style>
+{% endblock %}
 {% block body %}
-<h1>Run {{ run_id }}</h1>
-<p class="muted">Companies are processed one at a time while this page is open. If you close it, come back and it continues where it stopped.</p>
-<div id="status" class="msg">Starting…</div>
-<div class="wrap"><table>
-  <thead><tr><th>Company</th><th>State</th><th>Result</th></tr></thead>
+<p class="eyebrow"><a href="/">Dashboard</a> / Live run</p>
+<h1 class="num" style="font-size:1.6rem">{{ run_id }}</h1>
+<div class="card" style="margin-top:14px">
+  <div class="row" style="justify-content:space-between">
+    <span id="status" class="row" style="gap:8px"><span class="live-dot" aria-hidden="true"></span>Starting…</span>
+    <span class="muted num" id="count"></span>
+  </div>
+  <div class="progress" aria-hidden="true"><span id="prog"></span></div>
+  <p class="muted" style="margin:0;font-size:13px">One company at a time while this page is open. If you close it, come back and it continues where it stopped.</p>
+</div>
+
+<div class="card" style="padding:8px 6px;margin-top:10px"><div class="wrap"><table>
+  <thead><tr><th>Company</th><th>State</th><th>Result</th><th class="num">Time</th></tr></thead>
   <tbody>
   {% for i in items %}
-  <tr id="row-{{ i.domain }}"><td>{{ i.domain }}</td>
-    <td><span class="badge s-{{ i.state }}" data-state>{{ i.state }}</span></td>
-    <td data-result class="muted">{{ i.note or "" }}</td></tr>
+  <tr id="row-{{ i.domain }}" data-state="{{ i.state }}">
+    <td>{{ i.domain }}</td>
+    <td data-pill>{{ ui.pill(i.state) }}</td>
+    <td data-result class="muted">{{ i.note or "" }}</td>
+    <td data-time class="num timer"></td>
+  </tr>
   {% endfor %}
   </tbody>
-</table></div>
-<p><a class="btn" href="/runs/{{ run_id }}">Open the full report</a></p>
+</table></div></div>
+<p style="margin-top:16px"><a class="btn ghost" href="/runs/{{ run_id }}">Open the full report →</a></p>
+{% endblock %}
+{% block scripts %}
 <script>
 (function () {
   const runId = {{ run_id|tojson }}, csrf = {{ csrf|tojson }};
-  const status = document.getElementById("status");
-  function row(domain) { return document.getElementById("row-" + domain); }
-  function setRow(domain, state, text) {
-    const r = row(domain); if (!r) return;
-    const b = r.querySelector("[data-state]"); b.textContent = state; b.className = "badge s-" + state;
+  const PILL = {pending:["○","Queued"], running:["◌","Running"], done:["✓","Done"], skipped:["–","Skipped"],
+                drafted:["✓","Drafted"], sent:["✓","Sent"], needs_review:["!","Needs review"], dropped:["–","Dropped"], failed:["✕","Failed"]};
+  const pill = (s) => '<span class="pill st-' + s + '"><span class="ic">' + (PILL[s]||["•",s])[0] + '</span>' + (PILL[s]||["•",s])[1] + '</span>';
+  const rows = [...document.querySelectorAll("tr[data-state]")];
+  const statusEl = document.getElementById("status"), prog = document.getElementById("prog"), count = document.getElementById("count");
+  let timer = null;
+  function progress() {
+    const real = rows.filter(r => r.dataset.state !== "skipped");
+    const done = real.filter(r => !["pending","running"].includes(r.dataset.state)).length;
+    count.textContent = done + " of " + real.length + " done";
+    prog.style.width = (real.length ? 100 * done / real.length : 100) + "%";
+  }
+  function setRow(r, state, text, pillState) {
+    r.dataset.state = state; r.className = state === "running" ? "running" : "";
+    r.querySelector("[data-pill]").innerHTML = pill(pillState || state);
     r.querySelector("[data-result]").textContent = text || "";
+    progress();
+  }
+  function startTimer(r) {
+    const t0 = Date.now(), cell = r.querySelector("[data-time]");
+    clearInterval(timer);
+    timer = setInterval(() => cell.textContent = Math.round((Date.now() - t0) / 1000) + "s", 500);
+    return () => { clearInterval(timer); cell.textContent = Math.round((Date.now() - t0) / 1000) + "s"; };
+  }
+  function setStatus(text, live) {
+    statusEl.innerHTML = (live ? '<span class="live-dot" aria-hidden="true"></span>' : '') + '<span>' + text + '</span>';
   }
   async function step() {
-    const pending = [...document.querySelectorAll("[data-state]")].find(b => b.textContent === "pending");
-    if (pending) setRow(pending.closest("tr").id.slice(4), "running", "working…");
-    status.textContent = "Processing…";
+    const r = rows.find(x => x.dataset.state === "pending");
+    let stop = () => {};
+    if (r) { setRow(r, "running", "reading the website…"); stop = startTimer(r); }
+    setStatus("Processing" + (r ? " " + r.id.slice(4) : "") + "…", true);
     let res;
-    try {
-      res = await fetch("/api/runs/" + encodeURIComponent(runId) + "/next",
-                        {method: "POST", headers: {"X-CSRF-Token": csrf}});
-    } catch (e) { status.textContent = "Network error. Reload the page to continue."; return; }
-    if (!res.ok) { status.textContent = "Stopped: HTTP " + res.status + ". Reload the page to continue."; return; }
+    try { res = await fetch("/api/runs/" + encodeURIComponent(runId) + "/next", {method: "POST", headers: {"X-CSRF-Token": csrf}}); }
+    catch (e) { stop(); setStatus("Network error. Reload the page to continue."); return; }
+    if (!res.ok) { stop(); setStatus("Stopped (HTTP " + res.status + "). Reload the page to continue."); return; }
     const data = await res.json();
-    if (data.done) { status.textContent = "Run finished."; return; }
-    if (data.busy) { status.textContent = "Another request is still working on a company. Retrying shortly…";
-                     return setTimeout(step, 8000); }
-    const text = data.status + (data.tier ? " · tier " + data.tier : "") + (data.reason ? " · " + data.reason : "");
-    setRow(data.domain, "done", text);
+    stop();
+    if (data.done) { progress(); prog.style.width = "100%"; setStatus("✓ Run finished"); return; }
+    if (data.busy) { setStatus("Another request is still working on a company. Retrying shortly…", true); return setTimeout(step, 8000); }
+    const row = document.getElementById("row-" + data.domain) || r;
+    const text = (data.tier ? "Tier " + data.tier : "") + (data.reason ? (data.tier ? " · " : "") + data.reason : "");
+    if (row) setRow(row, "done", text, data.status);
     step();
   }
+  progress();
   step();
 })();
 </script>

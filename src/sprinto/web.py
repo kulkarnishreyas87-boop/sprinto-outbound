@@ -135,25 +135,58 @@ def healthz():
     return {"ok": True}
 
 
+def _summary(store: Store) -> dict:
+    """Dashboard numbers. Counts and costs only: safe to serve publicly."""
+    runs, total = [], Counter()
+    usd = secs = 0.0
+    for r in store.recent_runs(30):
+        recs = store.records_for_run(r["run_id"])
+        counts = Counter(x.status.value for x in recs)
+        total.update(counts)
+        run_usd = sum(x.cost.usd_estimate for x in recs)
+        usd += run_usd
+        secs += sum(sum(x.timings.values()) for x in recs) / 1000
+        items = store.run_items(r["run_id"])
+        runs.append({"run_id": r["run_id"], "version": r["config_version"], "started": str(r["started_at"])[:16].replace("T", " "),
+                     "n": len(recs), "counts": dict(counts), "usd": round(run_usd, 4),
+                     "pending": sum(1 for i in items if i["state"] in ("pending", "running"))})
+    companies = sum(total.values())
+    c = cfg()
+    return {
+        "runs": runs,
+        "totals": dict(total),
+        "companies": companies,
+        "drafted": total.get("drafted", 0) + total.get("sent", 0),
+        "sent": total.get("sent", 0),
+        "needs_review": total.get("needs_review", 0),
+        "dropped": total.get("dropped", 0),
+        "failed": total.get("failed", 0),
+        "usd_total": round(usd, 4),
+        "usd_per_company": round(usd / companies, 4) if companies else 0.0,
+        "secs_per_company": round(secs / companies, 1) if companies else 0.0,
+        "hunter_used": store.hunter_calls_since(30),
+        "hunter_cap": c.contacts.hunter_monthly_cap,
+        "database": "Postgres" if store.is_postgres else "SQLite",
+        "operator": operator_enabled(),
+        "config": c.version,
+        "active_run": store.active_run_id(),
+    }
+
+
+@app.get("/api/summary")
+def api_summary():
+    store = get_store()
+    try:
+        return JSONResponse(_summary(store), headers={"Cache-Control": "no-store"})
+    finally:
+        store.close()
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     store = get_store()
     try:
-        runs = []
-        for r in store.recent_runs(30):
-            recs = store.records_for_run(r["run_id"])
-            runs.append({"run_id": r["run_id"], "version": r["config_version"], "started": str(r["started_at"])[:16],
-                         "n": len(recs), "counts": Counter(x.status.value for x in recs),
-                         "usd": sum(x.cost.usd_estimate for x in recs)})
-        status = {
-            "database": "Postgres" if store.is_postgres else "SQLite (local)",
-            "operator": operator_enabled(),
-            "runs": len(runs),
-            "companies": sum(r["n"] for r in runs),
-            "drafted": sum(r["counts"].get("drafted", 0) + r["counts"].get("sent", 0) for r in runs),
-            "config": cfg().version,
-        }
-        return render(request, "index.html", runs=runs, active=store.active_run_id(), status=status)
+        return render(request, "index.html", s=_summary(store))
     finally:
         store.close()
 

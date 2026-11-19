@@ -107,7 +107,16 @@ _QUOTE_MAP = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"',
                             "–": "-", "—": "-", " ": " "})
 
 
+_SEPARATORS = re.compile(r"[\x00-\x1f\x7f·•▪◦]")
+
+
 def normalize(text: str) -> str:
-    """Normalisation shared by dedupe and quote verification."""
+    """Normalisation shared by dedupe and quote verification.
+
+    Separator marks (the cleaner joins short lines with " · ") and control characters count as
+    whitespace: models sometimes echo the separator as a control character (seen: U+0015), and
+    the words and their order still have to match exactly.
+    """
     text = unicodedata.normalize("NFKC", text).translate(_QUOTE_MAP)
+    text = _SEPARATORS.sub(" ", text)
     return re.sub(r"\s+", " ", text).strip().lower()

@@ -104,6 +104,23 @@ def test_single_value_fields_still_need_one_contiguous_quote():
     assert not ev.known and why == "quote_not_found"
 
 
+def test_separator_echoed_as_control_char_still_verifies():
+    # live 2026-11-19: Gemini returned "SHOP MEN \u0015 SHOP WOMEN" for the page text "SHOP MEN · SHOP WOMEN"
+    from sprinto.extract import QBuyer
+    pages = {"https://allbirds.com/": "New arrivals · SHOP MEN · SHOP WOMEN · Free shipping on orders"}
+    ev, why = verify_field("buyer_type", QBuyer(value="b2c", evidence_quote="SHOP MEN \u0015 SHOP WOMEN",
+                                                source_url="https://allbirds.com/"), pages)
+    assert ev.known and why is None
+
+
+def test_separator_tolerance_does_not_allow_different_words():
+    from sprinto.extract import QBuyer
+    pages = {"https://allbirds.com/": "SHOP MEN · SHOP WOMEN"}
+    ev, why = verify_field("buyer_type", QBuyer(value="b2c", evidence_quote="SHOP KIDS \u0015 SHOP WOMEN",
+                                                source_url="https://allbirds.com/"), pages)
+    assert not ev.known and why == "quote_not_found"
+
+
 def test_missing_is_unknown_not_false():
     ev, why = verify_field("compliance_tool_named", QStr(value=None, evidence_quote=None, source_url=None), PAGES)
     assert ev.value is None and not ev.verified and why is None

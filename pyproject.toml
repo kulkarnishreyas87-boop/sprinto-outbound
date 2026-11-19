@@ -38,7 +38,7 @@ testpaths = ["tests"]
 
 # Vercel: serve the FastAPI app (see vercel.json for duration and bundle exclusions)
 [tool.vercel]
-entrypoint = "sprinto.web:app"
+entrypoint = "main:app"
 
 [build-system]
 requires = ["uv_build>=0.11.29,<0.12.0"]
